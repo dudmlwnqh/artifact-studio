@@ -109,6 +109,7 @@ export default function PageViewer({ project, onUpdateProject, t, onEditPage }) 
                 }}>
                   <JsxRenderer code={current?.code || ""}
                     style={{ userSelect: "none", WebkitUserSelect: "none", minHeight: "100%" }}
+                    projectFiles={project.projectFiles}
                   />
                   {/* Edit button floating */}
                   <div onClick={(e) => { e.stopPropagation(); if (onEditPage && current) onEditPage(current); }}

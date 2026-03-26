@@ -1,7 +1,8 @@
 import { useState } from "react";
+import ProjectFiles from "./ProjectFiles.jsx";
 
 export default function StoryboardPanel({ project, onUpdateProject, t }) {
-  const [tab, setTab] = useState("storyboard"); // "materials" | "storyboard"
+  const [tab, setTab] = useState("storyboard"); // "files" | "materials" | "storyboard"
   const [steps, setSteps] = useState(project.storyboard || [
     {
       id: "s1", title: "앱 실행 — 데이터 로딩",
@@ -51,7 +52,7 @@ export default function StoryboardPanel({ project, onUpdateProject, t }) {
     <div style={{ display: "flex", flexDirection: "column", height: "100%", background: t.card }}>
       {/* Tabs: 자료 / 스토리보드 */}
       <div style={{ display: "flex", borderBottom: `1px solid ${t.cb}`, flexShrink: 0 }}>
-        {[["materials", "자료"], ["storyboard", "스토리보드"]].map(([k, label]) => (
+        {[["files", "📁 파일"], ["storyboard", "스토리보드"], ["materials", "자료"]].map(([k, label]) => (
           <button key={k} onClick={() => setTab(k)} style={{
             flex: 1, padding: "8px 0", fontSize: 12, border: "none", cursor: "pointer",
             background: "transparent", color: tab === k ? t.ac : t.t3,
@@ -60,6 +61,15 @@ export default function StoryboardPanel({ project, onUpdateProject, t }) {
           }}>{label}</button>
         ))}
       </div>
+
+      {/* ===== 파일 TAB ===== */}
+      {tab === "files" && (
+        <ProjectFiles
+          files={project.projectFiles || {}}
+          onChange={(newFiles) => onUpdateProject({ ...project, projectFiles: newFiles })}
+          t={t}
+        />
+      )}
 
       {/* ===== 자료 TAB ===== */}
       {tab === "materials" && (
