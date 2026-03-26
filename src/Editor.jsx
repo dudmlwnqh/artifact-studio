@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import PageViewer from "./components/PageViewer.jsx";
 import StoryboardPanel from "./components/StoryboardPanel.jsx";
+import DesignToolPanel from "./components/DesignToolPanel.jsx";
 
 // Slider - MUST be outside Editor to prevent remount on every render
 function Slider({ label, value, onChange, min = 0, max = 100, step = 1, unit = "px", t }) {
@@ -896,100 +897,17 @@ export default function Editor({ project, onBack, onSave, t }) {
           ) : null}
         </div>
 
-        {/* Floating Properties Remote - appears on double-click */}
+
+        {/* Floating Design Tool - between left and right panels */}
         {showPropsPanel && sel && (
-          <div style={{
-            position: "fixed", left: "50%", top: "50%", transform: "translate(-50%, -50%)",
-            width: 260, maxHeight: "70vh", overflow: "auto",
-            background: t.card, borderRadius: 12, padding: 14,
-            border: `1px solid ${t.cb}`, zIndex: 50,
-            boxShadow: "0 12px 40px rgba(0,0,0,0.5)"
-          }}>
-            {/* Header */}
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-              <div style={{ fontSize: 12, color: t.ac, fontWeight: 600 }}>
-                {"<" + sel.tag + ">"} 속성 편집
-              </div>
-              <span onClick={() => { setShowPropsPanel(false); setSelIdx(null); }}
-                style={{ cursor: "pointer", color: t.t3, fontSize: 16, padding: "0 4px" }}>×</span>
-            </div>
-
-            {/* Undo/Redo buttons */}
-            <div style={{ display: "flex", gap: 4, marginBottom: 8 }}>
-              <button onClick={undo} disabled={historyIdx <= 0}
-                style={{ flex: 1, padding: "4px", fontSize: 10, border: `1px solid ${t.cb}`, background: "transparent", color: historyIdx <= 0 ? t.cb : t.t2, borderRadius: 4, cursor: "pointer" }}>
-                ↩ 실행취소
-              </button>
-              <button onClick={redo} disabled={historyIdx >= history.length - 1}
-                style={{ flex: 1, padding: "4px", fontSize: 10, border: `1px solid ${t.cb}`, background: "transparent", color: historyIdx >= history.length - 1 ? t.cb : t.t2, borderRadius: 4, cursor: "pointer" }}>
-                ↪ 다시실행
-              </button>
-            </div>
-
-            {/* Font size + weight */}
-            <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
-              <div style={{ flex: 1 }}>
-                <Slider t={t} label="크기" value={(sel.so.fontSize || "14").replace("px", "")}
-                  onChange={v => updateStyle("fontSize", v)} min={8} max={72} />
-              </div>
-              <div style={{ width: 55, flexShrink: 0 }}>
-                <div style={{ fontSize: 10, color: t.t3, marginBottom: 2 }}>굵기</div>
-                <select value={sel.so.fontWeight || "400"}
-                  onChange={e => updateStyle("fontWeight", e.target.value)}
-                  style={{ width: "100%", padding: "3px 2px", background: t.ib, border: `1px solid ${t.ibr}`, borderRadius: 4, fontSize: 10, color: t.tx, outline: "none" }}>
-                  {["300", "400", "500", "600", "700"].map(w => <option key={w} value={w}>{w}</option>)}
-                </select>
-              </div>
-            </div>
-
-            {/* Colors */}
-            <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 10, color: t.t3, marginBottom: 2 }}>글자색</div>
-                <ColorInput propKey="color" so={sel.so} onUpdate={updateStyle} t={t} />
-              </div>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 10, color: t.t3, marginBottom: 2 }}>배경색</div>
-                <ColorInput propKey="background" so={sel.so} onUpdate={updateStyle} t={t} />
-              </div>
-            </div>
-
-            {/* Padding */}
-            <Slider t={t} label="패딩" value={parseInt(sel.so.padding || "0")}
-              onChange={v => updateStyle("padding", v + "px")} min={0} max={100} />
-
-            {/* Border radius */}
-            <Slider t={t} label="둥글기" value={(sel.so.borderRadius || "0").replace("px", "")}
-              onChange={v => updateStyle("borderRadius", v)} min={0} max={60} />
-
-            {/* Gap */}
-            <Slider t={t} label="간격(gap)" value={(sel.so.gap || "0").replace("px", "")}
-              onChange={v => updateStyle("gap", v)} min={0} max={60} />
-
-            {/* Opacity */}
-            <Slider t={t} label="투명도" value={sel.so.opacity || "1"}
-              onChange={v => updateStyle("opacity", v)} min={0} max={1} step={0.05} unit="" />
-
-            {/* Text align */}
-            <div style={{ marginBottom: 8 }}>
-              <div style={{ fontSize: 10, color: t.t3, marginBottom: 2 }}>정렬</div>
-              <div style={{ display: "flex", gap: 2 }}>
-                {[["left", "좌"], ["center", "중"], ["right", "우"]].map(([v, label]) => (
-                  <div key={v} onClick={() => updateStyle("textAlign", v)}
-                    style={{
-                      flex: 1, padding: "4px 0", textAlign: "center", fontSize: 10,
-                      cursor: "pointer", borderRadius: 4,
-                      background: (sel.so.textAlign || "left") === v ? t.abg : "transparent",
-                      border: `1px solid ${(sel.so.textAlign || "left") === v ? t.ac : t.ibr}`,
-                      color: (sel.so.textAlign || "left") === v ? t.ac : t.t3,
-                    }}>{label}</div>
-                ))}
-              </div>
-            </div>
-
-            <div style={{ fontSize: 9, color: t.t3, textAlign: "center", marginTop: 4 }}>
-              Ctrl+Z 실행취소 · Ctrl+Shift+Z 다시실행 · Esc 닫기
-            </div>
+          <div style={{ flexShrink: 0, borderLeft: "1px solid rgba(255,255,255,0.06)", borderRight: "1px solid rgba(255,255,255,0.06)" }}>
+            <DesignToolPanel
+              style={sel.so}
+              tagName={sel.tag}
+              textContent={sel.tc}
+              onChange={(key, value) => updateStyle(key, value)}
+              onClose={() => { setShowPropsPanel(false); setSelIdx(null); }}
+            />
           </div>
         )}
 
