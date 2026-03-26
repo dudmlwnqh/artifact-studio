@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import PageViewer from "./components/PageViewer.jsx";
 
 // Slider - MUST be outside Editor to prevent remount on every render
 function Slider({ label, value, onChange, min = 0, max = 100, step = 1, unit = "px", t }) {
@@ -95,6 +96,7 @@ function formatHTML(code) {
 }
 
 export default function Editor({ project, onBack, onSave, t }) {
+  const [editingPage, setEditingPage] = useState(null); // null = page viewer, { page } = editing specific page
   const [code, setCode] = useState(project.code || "");
   const [selIdx, setSelIdx] = useState(null);
   const [els, setEls] = useState([]);
@@ -305,8 +307,36 @@ export default function Editor({ project, onBack, onSave, t }) {
 
   // Handle save
   const handleSave = () => {
-    onSave({ ...project, code, interactions });
+    if (editingPage) {
+      // Save back to the page in project.pages
+      const updatedPages = (project.pages || []).map(pg =>
+        pg.id === editingPage.id ? { ...pg, code } : pg
+      );
+      onSave({ ...project, pages: updatedPages, code: updatedPages[0]?.code || code, interactions });
+    } else {
+      onSave({ ...project, code, interactions });
+    }
     onBack();
+  };
+
+  // Enter page editing mode
+  const startEditPage = (page) => {
+    setEditingPage(page);
+    setCode(page.code);
+    setSelIdx(null);
+  };
+
+  // Back to page viewer from page editing
+  const backToViewer = () => {
+    if (editingPage) {
+      // Save the current editing back to project pages
+      const updatedPages = (project.pages || []).map(pg =>
+        pg.id === editingPage.id ? { ...pg, code } : pg
+      );
+      onSave({ ...project, pages: updatedPages, code: updatedPages[0]?.code || project.code });
+    }
+    setEditingPage(null);
+    setSelIdx(null);
   };
 
   // Fire interaction action
@@ -517,6 +547,30 @@ export default function Editor({ project, onBack, onSave, t }) {
 
   // (Slider and ColorInput are defined outside Editor to prevent remount on re-render)
 
+  // Page viewer mode (no specific page being edited)
+  if (!editingPage) {
+    return (
+      <div style={{ background: t.bg, color: t.tx, fontFamily: "system-ui, sans-serif", height: "100vh", display: "flex", flexDirection: "column" }}>
+        {/* Header */}
+        <div style={{
+          display: "flex", alignItems: "center", gap: 8, padding: "8px 14px",
+          borderBottom: `1px solid ${t.cb}`, background: t.bg, zIndex: 10, flexShrink: 0
+        }}>
+          <span onClick={onBack} style={{ cursor: "pointer", color: t.t3, fontSize: 18, padding: "0 4px" }}>←</span>
+          <b style={{ fontSize: 15 }}>{project.name}</b>
+          <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
+            <button onClick={handleSave}
+              style={{ padding: "4px 10px", fontSize: 11, border: `1px solid ${t.gn}`, background: "transparent", color: t.gn, cursor: "pointer", borderRadius: 4, fontWeight: 600 }}>
+              저장
+            </button>
+          </div>
+        </div>
+        <PageViewer project={project} onUpdateProject={onSave} t={t} onEditPage={startEditPage} />
+      </div>
+    );
+  }
+
+  // Page editing mode
   return (
     <div style={{ background: t.bg, color: t.tx, fontFamily: "system-ui, sans-serif", height: "100vh", display: "flex", flexDirection: "column" }}>
       {/* Header */}
@@ -524,8 +578,9 @@ export default function Editor({ project, onBack, onSave, t }) {
         display: "flex", alignItems: "center", gap: 8, padding: "8px 14px",
         borderBottom: `1px solid ${t.cb}`, background: t.bg, zIndex: 10, flexShrink: 0
       }}>
-        <span onClick={onBack} style={{ cursor: "pointer", color: t.t3, fontSize: 18, padding: "0 4px" }}>←</span>
-        <b style={{ fontSize: 15 }}>{project.name}</b>
+        <span onClick={backToViewer} style={{ cursor: "pointer", color: t.t3, fontSize: 18, padding: "0 4px" }}>←</span>
+        <b style={{ fontSize: 15 }}>{editingPage.name}</b>
+        <span style={{ fontSize: 11, color: t.t3 }}>{project.name}</span>
 
         {/* View mode toggle: 👁 / </> pill */}
         <div style={{
