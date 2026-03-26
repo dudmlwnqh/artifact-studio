@@ -121,7 +121,7 @@ export default function App() {
         <div style={{ flex: 1 }}>
           <input
             value={search} onChange={e => setSearch(e.target.value)}
-            placeholder={tab === "component" ? "컴포넌트 검색..." : tab === "source" ? "소스 검색 (제목 + 내용)..." : "프로젝트 검색..."}
+            placeholder={tab === "component" ? "컴포넌트 검색..." : tab === "design" ? "디자인 자료 검색..." : tab === "backend" ? "백엔드·DB 검색..." : tab === "contacts" ? "담당자 검색..." : "프로젝트 검색..."}
             style={{
               width: "100%", padding: "9px 12px", background: t.ib,
               border: `1px solid ${t.ibr}`, borderRadius: 6,
@@ -150,7 +150,7 @@ export default function App() {
 
       {/* Tabs */}
       <div style={{ display: "flex", borderBottom: `1px solid ${t.cb}`, margin: "0 16px" }}>
-        {[["artifact", "아티팩트"], ["component", "컴포넌트"], ["source", "소스"]].map(([k, label]) => (
+        {[["artifact", "아티팩트"], ["component", "컴포넌트"], ["design", "디자인 자료"], ["backend", "백엔드·DB"], ["contacts", "외주·담당자"]].map(([k, label]) => (
           <button key={k} onClick={() => { setTab(k); setSearch(""); }}
             style={{
               flex: 1, padding: "10px 0", fontSize: 13,
@@ -304,9 +304,9 @@ export default function App() {
         <ComponentTab components={uiComponents} setComponents={setUiComponents} search={search} t={t} />
       )}
 
-      {/* Source Tab */}
-      {tab === "source" && (
-        <SourceTab sources={sources} setSources={setSources} search={search} t={t} />
+      {/* Design / Backend / Contacts Tabs */}
+      {(tab === "design" || tab === "backend" || tab === "contacts") && (
+        <SourceTab sources={sources} setSources={setSources} search={search} t={t} defaultSubTab={tab} />
       )}
     </div>
   );

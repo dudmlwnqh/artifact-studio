@@ -37,8 +37,8 @@ const INIT_CONTACTS = [
   { id:"c2", name:"박개발", role:"백엔드 개발", type:"기술 개발", contact:"dev@email.com", tasks:["API 연동","DB 설계"], status:"대기" },
 ];
 
-export default function SourceTab({ sources, setSources, search, t }) {
-  const [subTab, setSubTab] = useState("design"); // design | backend | contacts
+export default function SourceTab({ sources, setSources, search, t, defaultSubTab }) {
+  const subTab = defaultSubTab || "design"; // 부모에서 직접 제어
   const [cat, setCat] = useState("전체");
   const [viewMode, setViewMode] = useState("card"); // card | list
   const [recentIds] = useState(["a1","a8","a11","a14","a5"]);
@@ -73,18 +73,6 @@ export default function SourceTab({ sources, setSources, search, t }) {
 
   return (
     <div style={{ padding: 16 }}>
-      {/* Sub tabs */}
-      <div style={{ display: "flex", gap: 0, marginBottom: 16, borderBottom: `1px solid ${t.cb}` }}>
-        {[["design","디자인 자료"],["backend","백엔드 / DB"],["contacts","외주 / 담당자"]].map(([k,label]) => (
-          <button key={k} onClick={() => setSubTab(k)} style={{
-            flex: 1, padding: "8px 0", fontSize: 12, border: "none", cursor: "pointer",
-            background: "transparent",
-            color: subTab === k ? t.ac : t.t3,
-            borderBottom: subTab === k ? `2px solid ${t.ac}` : "2px solid transparent",
-            fontWeight: subTab === k ? 600 : 400
-          }}>{label}</button>
-        ))}
-      </div>
 
       {/* ===== 디자인 자료 ===== */}
       {subTab === "design" && (<>
