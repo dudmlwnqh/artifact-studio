@@ -420,15 +420,20 @@ export default function Editor({ project, onBack, onSave, t }) {
     }
   };
 
-  // Highlight selected element in preview
+  // Highlight selected element + get its bounding rect for resize handles
+  const [selRect, setSelRect] = useState(null);
+  const [resizing, setResizing] = useState(null); // { handle, startX, startY, startStyle }
+
   useEffect(() => {
-    if (!previewRef.current) return;
+    if (!previewRef.current) { setSelRect(null); return; }
     let idx = 0;
+    let foundNode = null;
     const walk = (node) => {
       if (node.nodeType === 1) {
         if (idx === selIdx) {
           node.style.outline = "2px dashed " + t.ac;
           node.style.outlineOffset = "2px";
+          foundNode = node;
         } else {
           node.style.outline = "";
           node.style.outlineOffset = "";
@@ -438,7 +443,70 @@ export default function Editor({ project, onBack, onSave, t }) {
       }
     };
     Array.from(previewRef.current.children).forEach(walk);
+    if (foundNode) {
+      const parentRect = previewRef.current.closest("[data-preview-area]")?.getBoundingClientRect();
+      const nodeRect = foundNode.getBoundingClientRect();
+      if (parentRect) {
+        setSelRect({
+          top: nodeRect.top - parentRect.top,
+          left: nodeRect.left - parentRect.left,
+          width: nodeRect.width,
+          height: nodeRect.height,
+        });
+      }
+    } else {
+      setSelRect(null);
+    }
   });
+
+  // Resize handle drag
+  useEffect(() => {
+    if (!resizing) return;
+    const handleMove = (e) => {
+      const dx = e.clientX - resizing.startX;
+      const dy = e.clientY - resizing.startY;
+      const h = resizing.handle;
+      const s = resizing.startStyle;
+
+      if (h === "t" || h === "tl" || h === "tr") {
+        updateStyle("paddingTop", Math.max(0, s.pt - dy) + "px");
+      }
+      if (h === "b" || h === "bl" || h === "br") {
+        updateStyle("paddingBottom", Math.max(0, s.pb + dy) + "px");
+      }
+      if (h === "l" || h === "tl" || h === "bl") {
+        updateStyle("paddingLeft", Math.max(0, s.pl - dx) + "px");
+      }
+      if (h === "r" || h === "tr" || h === "br") {
+        updateStyle("paddingRight", Math.max(0, s.pr + dx) + "px");
+      }
+    };
+    const handleUp = () => setResizing(null);
+    document.addEventListener("mousemove", handleMove);
+    document.addEventListener("mouseup", handleUp);
+    document.body.style.cursor = resizing.handle.length === 2 ? "nwse-resize" : (resizing.handle === "t" || resizing.handle === "b" ? "ns-resize" : "ew-resize");
+    document.body.style.userSelect = "none";
+    return () => {
+      document.removeEventListener("mousemove", handleMove);
+      document.removeEventListener("mouseup", handleUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+  }, [resizing]);
+
+  const startResize = (handle, e) => {
+    e.stopPropagation();
+    e.preventDefault();
+    if (!sel) return;
+    const pad = sel.so.padding || "0";
+    const parts = pad.replace(/px/g, "").trim().split(/\s+/).map(Number);
+    let pt, pr, pb, pl;
+    if (parts.length === 1) { pt = pr = pb = pl = parts[0] || 0; }
+    else if (parts.length === 2) { pt = pb = parts[0] || 0; pr = pl = parts[1] || 0; }
+    else if (parts.length === 3) { pt = parts[0] || 0; pr = pl = parts[1] || 0; pb = parts[2] || 0; }
+    else { pt = parts[0] || 0; pr = parts[1] || 0; pb = parts[2] || 0; pl = parts[3] || 0; }
+    setResizing({ handle, startX: e.clientX, startY: e.clientY, startStyle: { pt, pr, pb, pl } });
+  };
 
   const sel = selIdx !== null ? els[selIdx] : null;
 
@@ -454,17 +522,27 @@ export default function Editor({ project, onBack, onSave, t }) {
         <span onClick={onBack} style={{ cursor: "pointer", color: t.t3, fontSize: 18, padding: "0 4px" }}>←</span>
         <b style={{ fontSize: 15 }}>{project.name}</b>
 
-        {/* View mode toggle: 미리보기 / 코드 */}
-        <div style={{ display: "flex", border: `1px solid ${t.cb}`, borderRadius: 4, overflow: "hidden", marginLeft: 12 }}>
-          {[["preview", "미리보기"], ["code", "코드"]].map(([k, label]) => (
-            <button key={k} onClick={() => setViewMode(k)}
-              style={{
-                padding: "4px 14px", fontSize: 11, border: "none", cursor: "pointer",
-                background: viewMode === k ? t.abg : "transparent",
-                color: viewMode === k ? t.ac : t.t3,
-                fontWeight: viewMode === k ? 600 : 400
-              }}>{label}</button>
-          ))}
+        {/* View mode toggle: 👁 / </> pill */}
+        <div style={{
+          display: "flex", marginLeft: 12, background: t.ib,
+          borderRadius: 20, padding: 2, border: `1px solid ${t.ibr}`
+        }}>
+          <button onClick={() => setViewMode("preview")}
+            style={{
+              width: 34, height: 28, border: "none", borderRadius: 18, cursor: "pointer",
+              background: viewMode === "preview" ? t.card : "transparent",
+              color: viewMode === "preview" ? t.tx : t.t3,
+              fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center",
+              boxShadow: viewMode === "preview" ? "0 1px 3px rgba(0,0,0,0.2)" : "none"
+            }}>👁</button>
+          <button onClick={() => setViewMode("code")}
+            style={{
+              width: 34, height: 28, border: "none", borderRadius: 18, cursor: "pointer",
+              background: viewMode === "code" ? t.card : "transparent",
+              color: viewMode === "code" ? t.tx : t.t3,
+              fontSize: 11, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center",
+              boxShadow: viewMode === "code" ? "0 1px 3px rgba(0,0,0,0.2)" : "none"
+            }}>&lt;/&gt;</button>
         </div>
 
         {/* Interaction mode toggle */}
@@ -522,7 +600,7 @@ export default function Editor({ project, onBack, onSave, t }) {
         <div style={{ flex: 1, display: "flex", flexDirection: "column", borderRight: viewMode === "preview" ? `1px solid ${t.cb}` : "none", minWidth: 0 }}>
           {viewMode === "preview" ? (
             <>
-              <div style={{
+              <div data-preview-area style={{
                 flex: 1, padding: 24, background: t.pv,
                 display: "flex", alignItems: "center", justifyContent: "center",
                 position: "relative", overflow: "auto"
@@ -535,6 +613,32 @@ export default function Editor({ project, onBack, onSave, t }) {
                   onMouseLeave={eyedropper ? () => { setEyedropperPos(null); setEyedropperColor(null); } : undefined}
                   dangerouslySetInnerHTML={{ __html: code }}
                   style={{ maxWidth: "100%", cursor: interactionMode ? "pointer" : (eyedropper ? "none" : "crosshair"), userSelect: "none", WebkitUserSelect: "none" }} />
+
+                {/* Resize handles on selected element */}
+                {selRect && !interactionMode && !eyedropper && (
+                  <>
+                    {/* 8 handles: t, b, l, r, tl, tr, bl, br */}
+                    {[
+                      { id: "t",  cursor: "ns-resize",   top: selRect.top - 5,   left: selRect.left + selRect.width / 2 - 5 },
+                      { id: "b",  cursor: "ns-resize",   top: selRect.top + selRect.height - 5, left: selRect.left + selRect.width / 2 - 5 },
+                      { id: "l",  cursor: "ew-resize",   top: selRect.top + selRect.height / 2 - 5, left: selRect.left - 5 },
+                      { id: "r",  cursor: "ew-resize",   top: selRect.top + selRect.height / 2 - 5, left: selRect.left + selRect.width - 5 },
+                      { id: "tl", cursor: "nwse-resize", top: selRect.top - 5,   left: selRect.left - 5 },
+                      { id: "tr", cursor: "nesw-resize", top: selRect.top - 5,   left: selRect.left + selRect.width - 5 },
+                      { id: "bl", cursor: "nesw-resize", top: selRect.top + selRect.height - 5, left: selRect.left - 5 },
+                      { id: "br", cursor: "nwse-resize", top: selRect.top + selRect.height - 5, left: selRect.left + selRect.width - 5 },
+                    ].map(h => (
+                      <div key={h.id}
+                        onMouseDown={e => startResize(h.id, e)}
+                        style={{
+                          position: "absolute", top: h.top, left: h.left,
+                          width: 10, height: 10, background: t.ac, borderRadius: 2,
+                          cursor: h.cursor, zIndex: 15,
+                          border: "1px solid rgba(255,255,255,0.5)"
+                        }} />
+                    ))}
+                  </>
+                )}
 
                 {/* Eyedropper magnifier */}
                 {eyedropper && eyedropperPos && eyedropperColor && (
