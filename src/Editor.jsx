@@ -1,5 +1,45 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 
+// Slider - MUST be outside Editor to prevent remount on every render
+function Slider({ label, value, onChange, min = 0, max = 100, step = 1, unit = "px", t }) {
+  return (
+    <div style={{ marginBottom: 8 }}>
+      <div style={{ fontSize: 10, color: t.t3, marginBottom: 2 }}>{label}</div>
+      <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+        <input type="range" min={min} max={max} step={step} value={value}
+          onChange={e => onChange(e.target.value)}
+          style={{ flex: 1, height: 4, accentColor: t.ac }} />
+        <input value={value} onChange={e => onChange(e.target.value)}
+          style={{
+            width: 40, padding: "3px 4px", background: t.ib,
+            border: `1px solid ${t.ibr}`, borderRadius: 4,
+            fontSize: 10, color: t.tx, fontFamily: "monospace",
+            textAlign: "right", outline: "none"
+          }} />
+        {unit && <span style={{ fontSize: 9, color: t.t3, width: 16 }}>{unit}</span>}
+      </div>
+    </div>
+  );
+}
+
+// ColorInput - MUST be outside Editor to prevent remount on every render
+function ColorInput({ propKey, so, onUpdate, t }) {
+  const val = so?.[propKey] || "";
+  const hex = val.startsWith("#") ? val : "#000000";
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 4, flex: 1 }}>
+      <input type="color" value={hex} onChange={e => onUpdate(propKey, e.target.value)}
+        style={{ width: 24, height: 24, border: `1px solid ${t.ibr}`, borderRadius: 4, padding: 0, cursor: "pointer", flexShrink: 0 }} />
+      <input value={val} onChange={e => onUpdate(propKey, e.target.value)}
+        style={{
+          flex: 1, minWidth: 0, padding: "3px 6px", background: t.ib,
+          border: `1px solid ${t.ibr}`, borderRadius: 4,
+          fontSize: 10, color: t.tx, fontFamily: "monospace", outline: "none"
+        }} />
+    </div>
+  );
+}
+
 function parseStyle(str) {
   const o = {};
   if (!str) return o;
@@ -402,45 +442,7 @@ export default function Editor({ project, onBack, onSave, t }) {
 
   const sel = selIdx !== null ? els[selIdx] : null;
 
-  // Slider component - stopPropagation to prevent preview mouseDown hijacking drag
-  const Slider = ({ label, value, onChange, min = 0, max = 100, step = 1, unit = "px" }) => (
-    <div style={{ marginBottom: 8 }}>
-      <div style={{ fontSize: 10, color: t.t3, marginBottom: 2 }}>{label}</div>
-      <div style={{ display: "flex", alignItems: "center", gap: 4 }}
-        onMouseDown={e => e.stopPropagation()} onTouchStart={e => e.stopPropagation()}>
-        <input type="range" min={min} max={max} step={step} value={value}
-          onChange={e => onChange(e.target.value)}
-          style={{ flex: 1, height: 4, accentColor: t.ac }} />
-        <input value={value} onChange={e => onChange(e.target.value)}
-          style={{
-            width: 40, padding: "3px 4px", background: t.ib,
-            border: `1px solid ${t.ibr}`, borderRadius: 4,
-            fontSize: 10, color: t.tx, fontFamily: "monospace",
-            textAlign: "right", outline: "none"
-          }} />
-        {unit && <span style={{ fontSize: 9, color: t.t3, width: 16 }}>{unit}</span>}
-      </div>
-    </div>
-  );
-
-  // Compact color input (used inline)
-  const ColorInput = ({ propKey }) => {
-    const val = sel?.so[propKey] || "";
-    const hex = val.startsWith("#") ? val : "#000000";
-    return (
-      <div style={{ display: "flex", alignItems: "center", gap: 4, flex: 1 }}
-        onMouseDown={e => e.stopPropagation()}>
-        <input type="color" value={hex} onChange={e => updateStyle(propKey, e.target.value)}
-          style={{ width: 24, height: 24, border: `1px solid ${t.ibr}`, borderRadius: 4, padding: 0, cursor: "pointer", flexShrink: 0 }} />
-        <input value={val} onChange={e => updateStyle(propKey, e.target.value)}
-          style={{
-            flex: 1, minWidth: 0, padding: "3px 6px", background: t.ib,
-            border: `1px solid ${t.ibr}`, borderRadius: 4,
-            fontSize: 10, color: t.tx, fontFamily: "monospace", outline: "none"
-          }} />
-      </div>
-    );
-  };
+  // (Slider and ColorInput are defined outside Editor to prevent remount on re-render)
 
   return (
     <div style={{ background: t.bg, color: t.tx, fontFamily: "system-ui, sans-serif", height: "100vh", display: "flex", flexDirection: "column" }}>
@@ -760,11 +762,11 @@ export default function Editor({ project, onBack, onSave, t }) {
                   <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                     <div style={{ flex: 1 }}>
                       <div style={{ fontSize: 10, color: t.t3, marginBottom: 2 }}>글자색</div>
-                      <ColorInput propKey="color" />
+                      <ColorInput propKey="color" so={sel.so} onUpdate={updateStyle} t={t} />
                     </div>
                     <div style={{ flex: 1 }}>
                       <div style={{ fontSize: 10, color: t.t3, marginBottom: 2 }}>배경색</div>
-                      <ColorInput propKey="background" />
+                      <ColorInput propKey="background" so={sel.so} onUpdate={updateStyle} t={t} />
                     </div>
                   </div>
                   {/* 스포이드 버튼 */}
@@ -829,34 +831,34 @@ export default function Editor({ project, onBack, onSave, t }) {
                   return (
                     <div style={{ marginBottom: 10 }}>
                       <div style={{ fontSize: 11, color: t.t3, marginBottom: 6 }}>패딩</div>
-                      <Slider label="전체" value={Math.round((pt + pr + pb + pl) / 4)}
+                      <Slider t={t} label="전체" value={Math.round((pt + pr + pb + pl) / 4)}
                         onChange={v => { const n = Number(v); setPad(n, n, n, n); }} min={0} max={100} />
-                      <Slider label="상하" value={Math.round((pt + pb) / 2)}
+                      <Slider t={t} label="상하" value={Math.round((pt + pb) / 2)}
                         onChange={v => { const n = Number(v); setPad(n, pr, n, pl); }} min={0} max={100} />
-                      <Slider label="좌우" value={Math.round((pl + pr) / 2)}
+                      <Slider t={t} label="좌우" value={Math.round((pl + pr) / 2)}
                         onChange={v => { const n = Number(v); setPad(pt, n, pb, n); }} min={0} max={100} />
-                      <Slider label="상" value={pt}
+                      <Slider t={t} label="상" value={pt}
                         onChange={v => setPad(Number(v), pr, pb, pl)} min={0} max={100} />
-                      <Slider label="하" value={pb}
+                      <Slider t={t} label="하" value={pb}
                         onChange={v => setPad(pt, pr, Number(v), pl)} min={0} max={100} />
-                      <Slider label="좌" value={pl}
+                      <Slider t={t} label="좌" value={pl}
                         onChange={v => setPad(pt, pr, pb, Number(v))} min={0} max={100} />
-                      <Slider label="우" value={pr}
+                      <Slider t={t} label="우" value={pr}
                         onChange={v => setPad(pt, Number(v), pb, pl)} min={0} max={100} />
                     </div>
                   );
                 })()}
 
-                <Slider label="둥글기" value={(sel.so.borderRadius || "0").replace("px", "")}
+                <Slider t={t} label="둥글기" value={(sel.so.borderRadius || "0").replace("px", "")}
                   onChange={v => updateStyle("borderRadius", v)} min={0} max={60} />
 
-                <Slider label="간격 (gap)" value={(sel.so.gap || "0").replace("px", "")}
+                <Slider t={t} label="간격 (gap)" value={(sel.so.gap || "0").replace("px", "")}
                   onChange={v => updateStyle("gap", v)} min={0} max={60} />
 
-                <Slider label="행간" value={sel.so.lineHeight || "1.5"}
+                <Slider t={t} label="행간" value={sel.so.lineHeight || "1.5"}
                   onChange={v => updateStyle("lineHeight", v)} min={0.8} max={3} step={0.1} unit="" />
 
-                <Slider label="자간" value={(sel.so.letterSpacing || "0").replace("px", "")}
+                <Slider t={t} label="자간" value={(sel.so.letterSpacing || "0").replace("px", "")}
                   onChange={v => updateStyle("letterSpacing", v)} min={-2} max={10} step={0.1} />
 
                 {/* 폰트 패밀리 */}
@@ -889,10 +891,10 @@ export default function Editor({ project, onBack, onSave, t }) {
                   return (
                     <div style={{ marginBottom: 10 }}>
                       <div style={{ fontSize: 11, color: t.t3, marginBottom: 6 }}>마진</div>
-                      <Slider label="상" value={mt} onChange={v => setMar(Number(v), mr, mb, ml)} min={-50} max={100} />
-                      <Slider label="우" value={mr} onChange={v => setMar(mt, Number(v), mb, ml)} min={-50} max={100} />
-                      <Slider label="하" value={mb} onChange={v => setMar(mt, mr, Number(v), ml)} min={-50} max={100} />
-                      <Slider label="좌" value={ml} onChange={v => setMar(mt, mr, mb, Number(v))} min={-50} max={100} />
+                      <Slider t={t} label="상" value={mt} onChange={v => setMar(Number(v), mr, mb, ml)} min={-50} max={100} />
+                      <Slider t={t} label="우" value={mr} onChange={v => setMar(mt, Number(v), mb, ml)} min={-50} max={100} />
+                      <Slider t={t} label="하" value={mb} onChange={v => setMar(mt, mr, Number(v), ml)} min={-50} max={100} />
+                      <Slider t={t} label="좌" value={ml} onChange={v => setMar(mt, mr, mb, Number(v))} min={-50} max={100} />
                     </div>
                   );
                 })()}
@@ -926,7 +928,7 @@ export default function Editor({ project, onBack, onSave, t }) {
                 {/* Border (선) */}
                 <div style={{ marginBottom: 10 }}>
                   <div style={{ fontSize: 11, color: t.t3, marginBottom: 6 }}>선 (border)</div>
-                  <Slider label="두께" value={parseInt(sel.so.borderWidth || "0")}
+                  <Slider t={t} label="두께" value={parseInt(sel.so.borderWidth || "0")}
                     onChange={v => updateStyle("borderWidth", v + "px")} min={0} max={10} />
                   <div style={{ marginBottom: 6 }}>
                     <div style={{ fontSize: 10, color: t.t3, marginBottom: 2 }}>색상</div>
@@ -983,7 +985,7 @@ export default function Editor({ project, onBack, onSave, t }) {
                 </div>
 
                 {/* Opacity */}
-                <Slider label="opacity" value={sel.so.opacity || "1"}
+                <Slider t={t} label="opacity" value={sel.so.opacity || "1"}
                   onChange={v => updateStyle("opacity", v)} min={0} max={1} step={0.05} unit="" />
 
                 {/* Box Shadow */}
