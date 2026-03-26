@@ -559,6 +559,23 @@ export default function Editor({ project, onBack, onSave, t }) {
       }}>
         <span onClick={onBack} style={{ cursor: "pointer", color: t.t3, fontSize: 18, padding: "0 4px" }}>←</span>
         <b style={{ fontSize: 15 }}>{project.name}</b>
+        {/* Page dropdown */}
+        {(project.pages || []).length > 0 && (
+          <select value={editingPage?.id || ""}
+            onChange={e => {
+              const pg = (project.pages || []).find(p => p.id === e.target.value);
+              if (pg) { setCode(pg.code); setEditingPage(pg); setSelIdx(null); }
+            }}
+            style={{
+              padding: "3px 8px", fontSize: 11, background: t.ib,
+              border: `1px solid ${t.ibr}`, borderRadius: 4,
+              color: t.tx, outline: "none", maxWidth: 140
+            }}>
+            {(project.pages || []).map((pg, i) => (
+              <option key={pg.id} value={pg.id}>P{i + 1} {pg.name}</option>
+            ))}
+          </select>
+        )}
 
         {/* View mode toggle: 👁 / </> pill */}
         <div style={{
@@ -609,27 +626,6 @@ export default function Editor({ project, onBack, onSave, t }) {
         </div>
       </div>
 
-      {/* Element bar (only in preview mode) */}
-      {viewMode === "preview" && !interactionMode && (
-        <div style={{
-          padding: "6px 14px", display: "flex", gap: 4, overflowX: "auto",
-          background: t.card, borderBottom: `1px solid ${t.cb}`, flexShrink: 0
-        }}>
-          <span style={{ fontSize: 10, color: t.t3, flexShrink: 0, marginRight: 4, lineHeight: "24px" }}>요소:</span>
-          {els.map((el, i) => (
-            <span key={i} onClick={() => setSelIdx(i)}
-              style={{
-                fontSize: 10, padding: "4px 10px", cursor: "pointer", flexShrink: 0,
-                borderRadius: 4, lineHeight: "16px",
-                background: selIdx === i ? t.abg : "transparent",
-                color: selIdx === i ? t.ac : t.t3,
-                border: `1px solid ${selIdx === i ? t.ac : t.cb}`
-              }}>
-              {"<" + el.tag + ">"}{el.tc ? ` "${el.tc.slice(0, 8)}"` : ""}
-            </span>
-          ))}
-        </div>
-      )}
 
       {/* Main area */}
       <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
