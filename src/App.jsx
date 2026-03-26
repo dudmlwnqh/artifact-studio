@@ -4,6 +4,7 @@ import { INIT_PROJECTS } from "./data.js";
 import storage from "./storage.js";
 import Editor from "./Editor.jsx";
 import AddModal from "./AddModal.jsx";
+import SourceTab from "./components/SourceTab.jsx";
 
 const ZOOM = [
   { cols: 6, emo: 16, showTitle: false },
@@ -112,7 +113,7 @@ export default function App() {
         <div style={{ flex: 1 }}>
           <input
             value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="프로젝트 검색..."
+            placeholder={tab === "source" ? "소스 검색 (제목 + 내용)..." : "프로젝트 검색..."}
             style={{
               width: "100%", padding: "9px 12px", background: t.ib,
               border: `1px solid ${t.ibr}`, borderRadius: 6,
@@ -292,81 +293,7 @@ export default function App() {
 
       {/* Source Tab */}
       {tab === "source" && (
-        <div style={{ padding: 16 }}>
-          {/* Add source form */}
-          {showAddSource && (
-            <div style={{
-              marginBottom: 12, padding: 14, background: t.card,
-              border: `1px solid ${t.cb}`, borderRadius: 8
-            }}>
-              <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>자료 추가</div>
-              <input value={newSourceName} onChange={e => setNewSourceName(e.target.value)}
-                placeholder="자료 이름"
-                style={{
-                  width: "100%", padding: "8px 10px", marginBottom: 8, background: t.ib,
-                  border: `1px solid ${t.ibr}`, borderRadius: 6, fontSize: 13, color: t.tx,
-                  outline: "none", boxSizing: "border-box"
-                }} />
-              <select value={newSourceCat} onChange={e => setNewSourceCat(e.target.value)}
-                style={{
-                  width: "100%", padding: "8px 10px", marginBottom: 10, background: t.ib,
-                  border: `1px solid ${t.ibr}`, borderRadius: 6, fontSize: 13, color: t.tx, outline: "none"
-                }}>
-                {["버튼", "팔레트", "배경", "레이아웃", "아이콘", "텍스트", "기타"].map(c => (
-                  <option key={c} value={c}>{c}</option>
-                ))}
-              </select>
-              <div style={{ display: "flex", gap: 6 }}>
-                <button onClick={() => setShowAddSource(false)}
-                  style={{ flex: 1, padding: "8px", border: `1px solid ${t.cb}`, background: "transparent", color: t.t3, borderRadius: 6, fontSize: 12, cursor: "pointer" }}>
-                  취소
-                </button>
-                <button onClick={addSource}
-                  style={{ flex: 1, padding: "8px", border: "none", background: t.ac, color: "#fff", borderRadius: 6, fontSize: 12, cursor: "pointer", fontWeight: 600 }}>
-                  추가
-                </button>
-              </div>
-            </div>
-          )}
-
-          <div style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))",
-            gap: 8
-          }}>
-            {sources.map(d => (
-              <div key={d.id} style={{ border: `1px solid ${t.cb}`, borderRadius: 8, overflow: "hidden", background: t.card, position: "relative" }}>
-                <div style={{
-                  height: 70, display: "flex", alignItems: "center", justifyContent: "center",
-                  background: d.color || "#12121e", borderBottom: `1px solid ${t.cb}`
-                }}>
-                  {d.cat === "버튼" && <div style={{ padding: "4px 12px", background: d.color || "#7C6AFF", color: "#fff", fontSize: 9, borderRadius: 4 }}>{d.name}</div>}
-                  {d.cat === "팔레트" && <div style={{ display: "flex", gap: 2 }}>{["#534AB7", "#7C6AFF", "#1D9E75", "#EF9F27"].map(c => <div key={c} style={{ width: 14, height: 14, background: c, borderRadius: 2 }} />)}</div>}
-                  {d.cat !== "버튼" && d.cat !== "팔레트" && <div style={{ width: "100%", height: "100%", background: `linear-gradient(135deg, ${d.color || "#0f2027"}, #2c5364)` }} />}
-                </div>
-                <div style={{ padding: "8px 10px" }}>
-                  <div style={{ fontSize: 11, fontWeight: 500, color: t.tx }}>{d.name}</div>
-                  <div style={{ fontSize: 9, color: t.t3, marginTop: 2 }}>{d.cat}</div>
-                </div>
-                <span onClick={() => deleteSource(d.id)}
-                  style={{
-                    position: "absolute", top: 4, right: 6, fontSize: 14,
-                    color: "rgba(255,255,255,0.5)", cursor: "pointer", lineHeight: 1
-                  }}>×</span>
-              </div>
-            ))}
-            <div onClick={() => setShowAddSource(true)} style={{
-              border: `1px dashed ${t.cb}`, borderRadius: 8,
-              display: "flex", alignItems: "center", justifyContent: "center",
-              minHeight: 100, color: t.t3, fontSize: 11, cursor: "pointer"
-            }}>
-              + 자료 추가
-            </div>
-          </div>
-          <div style={{ padding: "10px 0", fontSize: 11, color: t.t3 }}>
-            {sources.length}개 자료 · × 클릭으로 삭제
-          </div>
-        </div>
+        <SourceTab sources={sources} setSources={setSources} search={search} t={t} />
       )}
     </div>
   );
