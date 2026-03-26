@@ -107,7 +107,7 @@ export default function ComponentTab({ components: compsProp, setComponents: set
               {/* 프리뷰 */}
               <div style={{
                 padding: 12, background: "#fafafa", borderBottom: `1px solid ${t.cb}`,
-                height: 100, overflow: "hidden",
+                height: 140, overflow: "hidden",
                 display: "flex", alignItems: "center", justifyContent: "center"
               }}>
                 <div style={{ transform: "scale(0.75)", transformOrigin: "center", maxWidth: "133%" }}
