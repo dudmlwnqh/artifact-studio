@@ -5,6 +5,7 @@ import storage from "./storage.js";
 import Editor from "./Editor.jsx";
 import AddModal from "./AddModal.jsx";
 import SourceTab from "./components/SourceTab.jsx";
+import ComponentTab, { INIT_COMPONENTS } from "./components/ComponentTab.jsx";
 
 const ZOOM = [
   { cols: 6, emo: 16, showTitle: false },
@@ -31,6 +32,7 @@ export default function App() {
   const [showAddSource, setShowAddSource] = useState(false);
   const [newSourceName, setNewSourceName] = useState("");
   const [newSourceCat, setNewSourceCat] = useState("버튼");
+  const [uiComponents, setUiComponents] = useState(INIT_COMPONENTS);
 
   const t = isDark ? dark : light;
   const z = ZOOM[zoom];
@@ -51,6 +53,11 @@ export default function App() {
           const parsed = JSON.parse(srcResult.value);
           if (Array.isArray(parsed)) setSources(parsed);
         }
+        const compResult = await storage.get("uiComponents");
+        if (compResult && compResult.value) {
+          const parsed = JSON.parse(compResult.value);
+          if (Array.isArray(parsed)) setUiComponents(parsed);
+        }
       } catch (e) {
         console.log("Storage load failed, using defaults");
       }
@@ -65,11 +72,12 @@ export default function App() {
       try {
         await storage.set("projects", JSON.stringify(projects));
         await storage.set("sources", JSON.stringify(sources));
+        await storage.set("uiComponents", JSON.stringify(uiComponents));
       } catch (e) {
         console.log("Storage save failed");
       }
     })();
-  }, [projects, sources, loaded]);
+  }, [projects, sources, uiComponents, loaded]);
 
   const addProject = (p) => setProjects(prev => [...prev, p]);
   const saveProject = (p) => {
@@ -113,7 +121,7 @@ export default function App() {
         <div style={{ flex: 1 }}>
           <input
             value={search} onChange={e => setSearch(e.target.value)}
-            placeholder={tab === "source" ? "소스 검색 (제목 + 내용)..." : "프로젝트 검색..."}
+            placeholder={tab === "component" ? "컴포넌트 검색..." : tab === "source" ? "소스 검색 (제목 + 내용)..." : "프로젝트 검색..."}
             style={{
               width: "100%", padding: "9px 12px", background: t.ib,
               border: `1px solid ${t.ibr}`, borderRadius: 6,
@@ -142,7 +150,7 @@ export default function App() {
 
       {/* Tabs */}
       <div style={{ display: "flex", borderBottom: `1px solid ${t.cb}`, margin: "0 16px" }}>
-        {[["artifact", "아티팩트"], ["source", "소스"]].map(([k, label]) => (
+        {[["artifact", "아티팩트"], ["component", "컴포넌트"], ["source", "소스"]].map(([k, label]) => (
           <button key={k} onClick={() => { setTab(k); setSearch(""); }}
             style={{
               flex: 1, padding: "10px 0", fontSize: 13,
@@ -289,6 +297,11 @@ export default function App() {
             {filtered.length}개 프로젝트 · 클릭하면 에디터 열림
           </div>
         </>
+      )}
+
+      {/* Component Tab */}
+      {tab === "component" && (
+        <ComponentTab components={uiComponents} setComponents={setUiComponents} search={search} t={t} />
       )}
 
       {/* Source Tab */}
