@@ -100,11 +100,55 @@ export default function Editor({ project, onBack, onSave, t }) {
   // Auto-start editing first page or project code
   const firstPage = (project.pages || [])[0] || null;
   const [editingPage, setEditingPage] = useState(firstPage);
-  const [code, setCode] = useState(firstPage?.code || project.code || "");
+  const [code, setCodeRaw] = useState(firstPage?.code || project.code || "");
+  const [history, setHistory] = useState([firstPage?.code || project.code || ""]);
+  const [historyIdx, setHistoryIdx] = useState(0);
   const [selIdx, setSelIdx] = useState(null);
+  const [showPropsPanel, setShowPropsPanel] = useState(false); // floating props panel
+  const [propsPanelPos, setPropsPanelPos] = useState({ x: 0, y: 0 });
   const [els, setEls] = useState([]);
   const [copied, setCopied] = useState(false);
   const [rightTab, setRightTab] = useState("storyboard"); // "storyboard" | "style" | "interaction"
+  const autoSaveTimer = useRef(null);
+
+  // setCode with undo history
+  const setCode = useCallback((newCode) => {
+    setCodeRaw(newCode);
+    setHistory(prev => {
+      const trimmed = prev.slice(0, historyIdx + 1);
+      const next = [...trimmed, newCode];
+      if (next.length > 50) next.shift(); // max 50 history
+      return next;
+    });
+    setHistoryIdx(prev => Math.min(prev + 1, 49));
+
+    // Auto-save after 1s of inactivity
+    if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
+    autoSaveTimer.current = setTimeout(() => {
+      if (editingPage) {
+        const updatedPages = (project.pages || []).map(pg =>
+          pg.id === editingPage.id ? { ...pg, code: newCode } : pg
+        );
+        onSave({ ...project, pages: updatedPages, code: updatedPages[0]?.code || newCode });
+      } else {
+        onSave({ ...project, code: newCode });
+      }
+    }, 1000);
+  }, [historyIdx, editingPage, project, onSave]);
+
+  const undo = useCallback(() => {
+    if (historyIdx <= 0) return;
+    const newIdx = historyIdx - 1;
+    setHistoryIdx(newIdx);
+    setCodeRaw(history[newIdx]);
+  }, [historyIdx, history]);
+
+  const redo = useCallback(() => {
+    if (historyIdx >= history.length - 1) return;
+    const newIdx = historyIdx + 1;
+    setHistoryIdx(newIdx);
+    setCodeRaw(history[newIdx]);
+  }, [historyIdx, history]);
   const [interactions, setInteractions] = useState(project.interactions || []);
   const [newTrigger, setNewTrigger] = useState("tap");
   const [newAction, setNewAction] = useState("toast");
@@ -134,6 +178,21 @@ export default function Editor({ project, onBack, onSave, t }) {
       }
       if (e.key === "Escape") {
         setEyedropper(null);
+        setSelIdx(null);
+        setShowPropsPanel(false);
+      }
+      // Ctrl+Z = undo, Ctrl+Shift+Z = redo
+      if (e.ctrlKey && e.key === "z" && !e.shiftKey) {
+        e.preventDefault();
+        undo();
+      }
+      if (e.ctrlKey && e.key === "z" && e.shiftKey) {
+        e.preventDefault();
+        redo();
+      }
+      if (e.ctrlKey && e.key === "y") {
+        e.preventDefault();
+        redo();
       }
       // Ctrl+S = save
       if (e.ctrlKey && e.key === "s") {
@@ -147,7 +206,7 @@ export default function Editor({ project, onBack, onSave, t }) {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [eyedropper, selIdx]);
+  }, [eyedropper, selIdx, undo, redo]);
 
   // Eyedropper: capture preview to canvas when entering eyedropper mode
   useEffect(() => {
@@ -634,7 +693,12 @@ export default function Editor({ project, onBack, onSave, t }) {
         <div style={{ flex: 1, display: "flex", flexDirection: "column", borderRight: `1px solid ${t.cb}`, minWidth: 0 }}>
           {viewMode === "preview" ? (
             <PageViewer project={project} onUpdateProject={onSave} t={t}
-              onEditPage={(page) => { setCode(page.code); setSelIdx(null); }} />
+              onEditPage={(page) => {
+                setCode(page.code);
+                setShowPropsPanel(true);
+                // Auto-select first element
+                setTimeout(() => setSelIdx(0), 100);
+              }} />
           ) : viewMode === "code" ? (
             /* Code editor mode */
             <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
@@ -832,435 +896,106 @@ export default function Editor({ project, onBack, onSave, t }) {
           ) : null}
         </div>
 
-        {/* Right Panel: Storyboard + Properties - ALWAYS VISIBLE */}
-        <div style={{ width: 320, flexShrink: 0, display: "flex", flexDirection: "column", background: t.card, borderLeft: `1px solid ${t.cb}` }}>
-          {/* Tab switcher */}
-          <div style={{ display: "flex", borderBottom: `1px solid ${t.cb}`, flexShrink: 0 }}>
-            {[["storyboard", "스토리보드"], ...(interactionMode ? [] : [["style", "속성 편집"], ["interaction", "인터랙션"]])].map(([k, label]) => (
-              <button key={k} onClick={() => setRightTab(k)}
-                style={{
-                  flex: 1, padding: "6px 0", fontSize: 10, border: "none", cursor: "pointer",
-                  background: rightTab === k ? t.abg : "transparent",
-                  color: rightTab === k ? t.ac : t.t3,
-                  borderBottom: rightTab === k ? `2px solid ${t.ac}` : "2px solid transparent",
-                  fontWeight: rightTab === k ? 600 : 400
-                }}>{label}</button>
-            ))}
-          </div>
-
-          {/* Storyboard tab */}
-          {rightTab === "storyboard" && (
-            <StoryboardPanel project={project} onUpdateProject={onSave} t={t} />
-          )}
-          {/* Style tab */}
-          {rightTab === "style" && (
-            !sel ? (
-              <div style={{ padding: 40, textAlign: "center", fontSize: 12, color: t.t3 }}>
-                ← 미리보기에서<br />요소를 클릭하세요
+        {/* Floating Properties Remote - appears on double-click */}
+        {showPropsPanel && sel && (
+          <div style={{
+            position: "fixed", left: "50%", top: "50%", transform: "translate(-50%, -50%)",
+            width: 260, maxHeight: "70vh", overflow: "auto",
+            background: t.card, borderRadius: 12, padding: 14,
+            border: `1px solid ${t.cb}`, zIndex: 50,
+            boxShadow: "0 12px 40px rgba(0,0,0,0.5)"
+          }}>
+            {/* Header */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+              <div style={{ fontSize: 12, color: t.ac, fontWeight: 600 }}>
+                {"<" + sel.tag + ">"} 속성 편집
               </div>
-            ) : (
-              <div style={{ flex: 1, overflow: "auto", padding: "10px 14px" }}>
-                {/* Selected element info */}
-                <div style={{
-                  padding: "6px 10px", marginBottom: 12, background: t.abg,
-                  borderRadius: 6, fontSize: 12, color: t.ac, fontWeight: 500
-                }}>
-                  {"<" + sel.tag + ">"}
-                  {sel.tc && <span style={{ fontWeight: 400, color: t.t3, marginLeft: 4 }}>"{sel.tc.slice(0, 12)}"</span>}
-                </div>
-
-                {/* 글자 크기 + 굵기 (같은 행) */}
-                <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 10, color: t.t3, marginBottom: 2 }}>크기</div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 4 }}
-                      onMouseDown={e => e.stopPropagation()}>
-                      <input type="range" min={8} max={72} value={(sel.so.fontSize || "14").replace("px", "")}
-                        onChange={e => updateStyle("fontSize", e.target.value)}
-                        style={{ flex: 1, height: 4, accentColor: t.ac }} />
-                      <input value={(sel.so.fontSize || "14").replace("px", "")}
-                        onChange={e => updateStyle("fontSize", e.target.value)}
-                        style={{
-                          width: 32, padding: "3px 4px", background: t.ib,
-                          border: `1px solid ${t.ibr}`, borderRadius: 4,
-                          fontSize: 10, color: t.tx, fontFamily: "monospace",
-                          textAlign: "right", outline: "none"
-                        }} />
-                    </div>
-                  </div>
-                  <div style={{ width: 60, flexShrink: 0 }}>
-                    <div style={{ fontSize: 10, color: t.t3, marginBottom: 2 }}>굵기</div>
-                    <select value={sel.so.fontWeight || "400"}
-                      onChange={e => updateStyle("fontWeight", e.target.value)}
-                      onMouseDown={e => e.stopPropagation()}
-                      style={{
-                        width: "100%", padding: "4px 2px", background: t.ib,
-                        border: `1px solid ${t.ibr}`, borderRadius: 4,
-                        fontSize: 10, color: t.tx, outline: "none"
-                      }}>
-                      {["300", "400", "500", "600", "700"].map(w => <option key={w} value={w}>{w}</option>)}
-                    </select>
-                  </div>
-                </div>
-
-                {/* 글자색 + 배경색 (같은 행) + 스포이드 */}
-                <div style={{ marginBottom: 8 }}>
-                  <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 10, color: t.t3, marginBottom: 2 }}>글자색</div>
-                      <ColorInput propKey="color" so={sel.so} onUpdate={updateStyle} t={t} />
-                    </div>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 10, color: t.t3, marginBottom: 2 }}>배경색</div>
-                      <ColorInput propKey="background" so={sel.so} onUpdate={updateStyle} t={t} />
-                    </div>
-                  </div>
-                  {/* 스포이드 버튼 */}
-                  <div style={{ display: "flex", gap: 4, marginTop: 4 }}>
-                    <button onClick={() => setEyedropper(eyedropper === "color" ? null : "color")}
-                      style={{
-                        flex: 1, padding: "4px 0", fontSize: 9, border: `1px solid ${t.ibr}`,
-                        background: eyedropper === "color" ? t.ac : "transparent",
-                        color: eyedropper === "color" ? "#fff" : t.t3,
-                        cursor: "pointer", borderRadius: 3
-                      }}>
-                      🔍 글자색 스포이드
-                    </button>
-                    <button onClick={() => setEyedropper(eyedropper === "background" ? null : "background")}
-                      style={{
-                        flex: 1, padding: "4px 0", fontSize: 9, border: `1px solid ${t.ibr}`,
-                        background: eyedropper === "background" ? t.ac : "transparent",
-                        color: eyedropper === "background" ? "#fff" : t.t3,
-                        cursor: "pointer", borderRadius: 3
-                      }}>
-                      🔍 배경색 스포이드
-                    </button>
-                  </div>
-                  {eyedropper && (
-                    <div style={{ marginTop: 4, padding: "4px 8px", background: t.ac, borderRadius: 4, fontSize: 10, color: "#fff", textAlign: "center" }}>
-                      스포이드 모드: 미리보기에서 원하는 요소 클릭 (Esc 취소)
-                    </div>
-                  )}
-                </div>
-
-                {/* Text align */}
-                <div style={{ marginBottom: 10 }}>
-                  <div style={{ fontSize: 11, color: t.t3, marginBottom: 4 }}>텍스트 정렬</div>
-                  <div style={{ display: "flex", gap: 2 }}>
-                    {[["left", "좌"], ["center", "중"], ["right", "우"]].map(([v, label]) => (
-                      <div key={v} onClick={() => updateStyle("textAlign", v)}
-                        style={{
-                          flex: 1, padding: "6px 0", textAlign: "center", fontSize: 11,
-                          cursor: "pointer", borderRadius: 4,
-                          background: (sel.so.textAlign || "left") === v ? t.abg : "transparent",
-                          border: `1px solid ${(sel.so.textAlign || "left") === v ? t.ac : t.ibr}`,
-                          color: (sel.so.textAlign || "left") === v ? t.ac : t.t3,
-                          fontWeight: (sel.so.textAlign || "left") === v ? 600 : 400
-                        }}>
-                        {label}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Padding - 7 sliders */}
-                {(() => {
-                  const raw = sel.so.padding || "0";
-                  const parts = raw.replace(/px/g, "").trim().split(/\s+/).map(Number);
-                  let pt, pr, pb, pl;
-                  if (parts.length === 1) { pt = pr = pb = pl = parts[0] || 0; }
-                  else if (parts.length === 2) { pt = pb = parts[0] || 0; pr = pl = parts[1] || 0; }
-                  else if (parts.length === 3) { pt = parts[0] || 0; pr = pl = parts[1] || 0; pb = parts[2] || 0; }
-                  else { pt = parts[0] || 0; pr = parts[1] || 0; pb = parts[2] || 0; pl = parts[3] || 0; }
-                  const setPad = (top, right, bottom, left) =>
-                    updateStyle("padding", `${top}px ${right}px ${bottom}px ${left}px`);
-                  return (
-                    <div style={{ marginBottom: 10 }}>
-                      <div style={{ fontSize: 11, color: t.t3, marginBottom: 6 }}>패딩</div>
-                      <Slider t={t} label="전체" value={Math.round((pt + pr + pb + pl) / 4)}
-                        onChange={v => { const n = Number(v); setPad(n, n, n, n); }} min={0} max={100} />
-                      <Slider t={t} label="상하" value={Math.round((pt + pb) / 2)}
-                        onChange={v => { const n = Number(v); setPad(n, pr, n, pl); }} min={0} max={100} />
-                      <Slider t={t} label="좌우" value={Math.round((pl + pr) / 2)}
-                        onChange={v => { const n = Number(v); setPad(pt, n, pb, n); }} min={0} max={100} />
-                      <Slider t={t} label="상" value={pt}
-                        onChange={v => setPad(Number(v), pr, pb, pl)} min={0} max={100} />
-                      <Slider t={t} label="하" value={pb}
-                        onChange={v => setPad(pt, pr, Number(v), pl)} min={0} max={100} />
-                      <Slider t={t} label="좌" value={pl}
-                        onChange={v => setPad(pt, pr, pb, Number(v))} min={0} max={100} />
-                      <Slider t={t} label="우" value={pr}
-                        onChange={v => setPad(pt, Number(v), pb, pl)} min={0} max={100} />
-                    </div>
-                  );
-                })()}
-
-                <Slider t={t} label="둥글기" value={(sel.so.borderRadius || "0").replace("px", "")}
-                  onChange={v => updateStyle("borderRadius", v)} min={0} max={60} />
-
-                <Slider t={t} label="간격 (gap)" value={(sel.so.gap || "0").replace("px", "")}
-                  onChange={v => updateStyle("gap", v)} min={0} max={60} />
-
-                <Slider t={t} label="행간" value={sel.so.lineHeight || "1.5"}
-                  onChange={v => updateStyle("lineHeight", v)} min={0.8} max={3} step={0.1} unit="" />
-
-                <Slider t={t} label="자간" value={(sel.so.letterSpacing || "0").replace("px", "")}
-                  onChange={v => updateStyle("letterSpacing", v)} min={-2} max={10} step={0.1} />
-
-                {/* 폰트 패밀리 */}
-                <div style={{ marginBottom: 10 }}>
-                  <div style={{ fontSize: 11, color: t.t3, marginBottom: 4 }}>폰트 패밀리</div>
-                  <select value={sel.so.fontFamily || "system-ui"}
-                    onChange={e => updateStyle("fontFamily", e.target.value)}
-                    style={{
-                      width: "100%", padding: "6px 8px", background: t.ib,
-                      border: `1px solid ${t.ibr}`, borderRadius: 4,
-                      fontSize: 12, color: t.tx, outline: "none"
-                    }}>
-                    {["system-ui, sans-serif", "serif", "monospace", "cursive", "'Noto Sans KR', sans-serif", "'Roboto', sans-serif"].map(f =>
-                      <option key={f} value={f}>{f.split(",")[0].replace(/'/g, "")}</option>
-                    )}
-                  </select>
-                </div>
-
-                {/* 마진 (상/우/하/좌) */}
-                {(() => {
-                  const raw = sel.so.margin || "0";
-                  const parts = raw.replace(/px/g, "").trim().split(/\s+/).map(Number);
-                  let mt, mr, mb, ml;
-                  if (parts.length === 1) { mt = mr = mb = ml = parts[0] || 0; }
-                  else if (parts.length === 2) { mt = mb = parts[0] || 0; mr = ml = parts[1] || 0; }
-                  else if (parts.length === 3) { mt = parts[0] || 0; mr = ml = parts[1] || 0; mb = parts[2] || 0; }
-                  else { mt = parts[0] || 0; mr = parts[1] || 0; mb = parts[2] || 0; ml = parts[3] || 0; }
-                  const setMar = (top, right, bottom, left) =>
-                    updateStyle("margin", `${top}px ${right}px ${bottom}px ${left}px`);
-                  return (
-                    <div style={{ marginBottom: 10 }}>
-                      <div style={{ fontSize: 11, color: t.t3, marginBottom: 6 }}>마진</div>
-                      <Slider t={t} label="상" value={mt} onChange={v => setMar(Number(v), mr, mb, ml)} min={-50} max={100} />
-                      <Slider t={t} label="우" value={mr} onChange={v => setMar(mt, Number(v), mb, ml)} min={-50} max={100} />
-                      <Slider t={t} label="하" value={mb} onChange={v => setMar(mt, mr, Number(v), ml)} min={-50} max={100} />
-                      <Slider t={t} label="좌" value={ml} onChange={v => setMar(mt, mr, mb, Number(v))} min={-50} max={100} />
-                    </div>
-                  );
-                })()}
-
-                {/* 너비 / 높이 */}
-                <div style={{ marginBottom: 10 }}>
-                  <div style={{ fontSize: 11, color: t.t3, marginBottom: 4 }}>너비</div>
-                  <input value={sel.so.width || "auto"}
-                    onChange={e => updateStyle("width", e.target.value)}
-                    placeholder="auto, 100px, 50%"
-                    style={{
-                      width: "100%", padding: "6px 8px", background: t.ib,
-                      border: `1px solid ${t.ibr}`, borderRadius: 4,
-                      fontSize: 12, color: t.tx, fontFamily: "monospace", outline: "none",
-                      boxSizing: "border-box"
-                    }} />
-                </div>
-                <div style={{ marginBottom: 10 }}>
-                  <div style={{ fontSize: 11, color: t.t3, marginBottom: 4 }}>높이</div>
-                  <input value={sel.so.height || "auto"}
-                    onChange={e => updateStyle("height", e.target.value)}
-                    placeholder="auto, 100px, 50%"
-                    style={{
-                      width: "100%", padding: "6px 8px", background: t.ib,
-                      border: `1px solid ${t.ibr}`, borderRadius: 4,
-                      fontSize: 12, color: t.tx, fontFamily: "monospace", outline: "none",
-                      boxSizing: "border-box"
-                    }} />
-                </div>
-
-                {/* Border (선) */}
-                <div style={{ marginBottom: 10 }}>
-                  <div style={{ fontSize: 11, color: t.t3, marginBottom: 6 }}>선 (border)</div>
-                  <Slider t={t} label="두께" value={parseInt(sel.so.borderWidth || "0")}
-                    onChange={v => updateStyle("borderWidth", v + "px")} min={0} max={10} />
-                  <div style={{ marginBottom: 6 }}>
-                    <div style={{ fontSize: 10, color: t.t3, marginBottom: 2 }}>색상</div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 4 }}
-                      onMouseDown={e => e.stopPropagation()}>
-                      <input type="color" value={(sel.so.borderColor || "#000000").startsWith("#") ? sel.so.borderColor : "#000000"}
-                        onChange={e => updateStyle("borderColor", e.target.value)}
-                        style={{ width: 24, height: 24, border: `1px solid ${t.ibr}`, borderRadius: 4, padding: 0, cursor: "pointer" }} />
-                      <input value={sel.so.borderColor || ""}
-                        onChange={e => updateStyle("borderColor", e.target.value)}
-                        style={{
-                          flex: 1, padding: "3px 6px", background: t.ib,
-                          border: `1px solid ${t.ibr}`, borderRadius: 4,
-                          fontSize: 10, color: t.tx, fontFamily: "monospace", outline: "none"
-                        }} />
-                    </div>
-                  </div>
-                  <div>
-                    <div style={{ fontSize: 11, color: t.t3, marginBottom: 4 }}>스타일</div>
-                    <div style={{ display: "flex", gap: 2 }}>
-                      {["none", "solid", "dashed", "dotted"].map(s => (
-                        <div key={s} onClick={() => updateStyle("borderStyle", s)}
-                          style={{
-                            flex: 1, padding: "5px 0", textAlign: "center", fontSize: 10,
-                            cursor: "pointer", borderRadius: 4,
-                            background: (sel.so.borderStyle || "none") === s ? t.abg : "transparent",
-                            border: `1px solid ${(sel.so.borderStyle || "none") === s ? t.ac : t.ibr}`,
-                            color: (sel.so.borderStyle || "none") === s ? t.ac : t.t3,
-                          }}>
-                          {s}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Display */}
-                <div style={{ marginBottom: 10 }}>
-                  <div style={{ fontSize: 11, color: t.t3, marginBottom: 4 }}>display</div>
-                  <div style={{ display: "flex", gap: 2 }}>
-                    {["block", "flex", "grid", "inline", "none"].map(d => (
-                      <div key={d} onClick={() => updateStyle("display", d)}
-                        style={{
-                          flex: 1, padding: "5px 0", textAlign: "center", fontSize: 10,
-                          cursor: "pointer", borderRadius: 4,
-                          background: (sel.so.display || "block") === d ? t.abg : "transparent",
-                          border: `1px solid ${(sel.so.display || "block") === d ? t.ac : t.ibr}`,
-                          color: (sel.so.display || "block") === d ? t.ac : t.t3,
-                        }}>
-                        {d}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Opacity */}
-                <Slider t={t} label="opacity" value={sel.so.opacity || "1"}
-                  onChange={v => updateStyle("opacity", v)} min={0} max={1} step={0.05} unit="" />
-
-                {/* Box Shadow */}
-                <div style={{ marginBottom: 10 }}>
-                  <div style={{ fontSize: 11, color: t.t3, marginBottom: 4 }}>box-shadow</div>
-                  <input value={sel.so.boxShadow || "none"}
-                    onChange={e => updateStyle("boxShadow", e.target.value)}
-                    placeholder="0 4px 12px rgba(0,0,0,0.2)"
-                    style={{
-                      width: "100%", padding: "6px 8px", background: t.ib,
-                      border: `1px solid ${t.ibr}`, borderRadius: 4,
-                      fontSize: 11, color: t.tx, fontFamily: "monospace", outline: "none",
-                      boxSizing: "border-box"
-                    }} />
-                  <div style={{ display: "flex", gap: 4, marginTop: 4 }}>
-                    {[
-                      ["없음", "none"],
-                      ["약한", "0 2px 8px rgba(0,0,0,0.15)"],
-                      ["중간", "0 4px 16px rgba(0,0,0,0.25)"],
-                      ["강한", "0 8px 32px rgba(0,0,0,0.4)"],
-                    ].map(([label, val]) => (
-                      <button key={label} onClick={() => updateStyle("boxShadow", val)}
-                        style={{
-                          flex: 1, padding: "4px 0", fontSize: 9, border: `1px solid ${t.ibr}`,
-                          background: sel.so.boxShadow === val ? t.abg : "transparent",
-                          color: sel.so.boxShadow === val ? t.ac : t.t3,
-                          cursor: "pointer", borderRadius: 3
-                        }}>
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Cursor */}
-                <div style={{ marginBottom: 10 }}>
-                  <div style={{ fontSize: 11, color: t.t3, marginBottom: 4 }}>cursor</div>
-                  <select value={sel.so.cursor || "default"}
-                    onChange={e => updateStyle("cursor", e.target.value)}
-                    style={{
-                      width: "100%", padding: "6px 8px", background: t.ib,
-                      border: `1px solid ${t.ibr}`, borderRadius: 4,
-                      fontSize: 12, color: t.tx, outline: "none"
-                    }}>
-                    {["default", "pointer", "text", "move", "not-allowed", "grab", "crosshair"].map(c =>
-                      <option key={c} value={c}>{c}</option>
-                    )}
-                  </select>
-                </div>
-              </div>
-            )
-          )}
-
-          {/* Interaction tab */}
-          {rightTab === "interaction" && (
-            <div style={{ flex: 1, overflow: "auto", padding: "10px 14px" }}>
-              {selIdx === null ? (
-                <div style={{ padding: 20, textAlign: "center", fontSize: 12, color: t.t3 }}>
-                  ← 미리보기에서 요소를 선택한 뒤<br />인터랙션을 추가하세요
-                </div>
-              ) : (
-                <div style={{ marginBottom: 16, padding: 12, background: t.abg, borderRadius: 8 }}>
-                  <div style={{ fontSize: 12, color: t.ac, fontWeight: 600, marginBottom: 10 }}>
-                    {"<" + (els[selIdx]?.tag || "") + ">"} 에 인터랙션 추가
-                  </div>
-                  <div style={{ marginBottom: 8 }}>
-                    <div style={{ fontSize: 11, color: t.t3, marginBottom: 4 }}>트리거</div>
-                    <select value={newTrigger} onChange={e => setNewTrigger(e.target.value)}
-                      style={{ width: "100%", padding: "6px 8px", background: t.ib, border: `1px solid ${t.ibr}`, borderRadius: 4, fontSize: 12, color: t.tx, outline: "none" }}>
-                      <option value="tap">탭 (클릭)</option>
-                      <option value="longPress">롱프레스</option>
-                    </select>
-                  </div>
-                  <div style={{ marginBottom: 8 }}>
-                    <div style={{ fontSize: 11, color: t.t3, marginBottom: 4 }}>액션</div>
-                    <select value={newAction} onChange={e => setNewAction(e.target.value)}
-                      style={{ width: "100%", padding: "6px 8px", background: t.ib, border: `1px solid ${t.ibr}`, borderRadius: 4, fontSize: 12, color: t.tx, outline: "none" }}>
-                      <option value="toast">토스트</option>
-                      <option value="bottomSheet">바텀시트</option>
-                      <option value="modal">모달</option>
-                    </select>
-                  </div>
-                  <div style={{ marginBottom: 8 }}>
-                    <div style={{ fontSize: 11, color: t.t3, marginBottom: 4 }}>메시지</div>
-                    <input value={newActionMsg} onChange={e => setNewActionMsg(e.target.value)}
-                      style={{ width: "100%", padding: "6px 8px", background: t.ib, border: `1px solid ${t.ibr}`, borderRadius: 4, fontSize: 12, color: t.tx, outline: "none", boxSizing: "border-box" }} />
-                  </div>
-                  <button onClick={addInteraction}
-                    style={{ width: "100%", padding: "8px", background: t.ac, color: "#fff", border: "none", borderRadius: 6, fontSize: 12, cursor: "pointer", fontWeight: 600 }}>
-                    + 인터랙션 추가
-                  </button>
-                </div>
-              )}
-
-              {/* Interaction list */}
-              <div style={{ fontSize: 11, color: t.t3, marginBottom: 6 }}>
-                등록된 인터랙션 ({interactions.length})
-              </div>
-              {interactions.length === 0 ? (
-                <div style={{ padding: 16, textAlign: "center", fontSize: 11, color: t.t3 }}>
-                  아직 인터랙션이 없습니다
-                </div>
-              ) : (
-                interactions.map(intr => (
-                  <div key={intr.id} style={{
-                    display: "flex", alignItems: "center", gap: 6, padding: "8px 10px",
-                    marginBottom: 4, background: t.ib, borderRadius: 6, border: `1px solid ${t.ibr}`
-                  }}>
-                    <div style={{ flex: 1, fontSize: 11 }}>
-                      <span style={{ color: t.ac, fontWeight: 500 }}>
-                        {els[intr.elIdx]?.tag ? `<${els[intr.elIdx].tag}>` : `요소${intr.elIdx}`}
-                      </span>
-                      <span style={{ color: t.t3 }}> → </span>
-                      <span style={{ color: t.am }}>
-                        {intr.trigger === "tap" ? "탭" : "롱프레스"}
-                      </span>
-                      <span style={{ color: t.t3 }}> → </span>
-                      <span style={{ color: t.gn }}>
-                        {intr.action === "toast" ? "토스트" : intr.action === "bottomSheet" ? "바텀시트" : "모달"}
-                      </span>
-                      <div style={{ fontSize: 10, color: t.t3, marginTop: 2 }}>"{intr.message}"</div>
-                    </div>
-                    <span onClick={() => deleteInteraction(intr.id)}
-                      style={{ cursor: "pointer", color: t.t3, fontSize: 14, padding: "0 4px" }}>×</span>
-                  </div>
-                ))
-              )}
+              <span onClick={() => { setShowPropsPanel(false); setSelIdx(null); }}
+                style={{ cursor: "pointer", color: t.t3, fontSize: 16, padding: "0 4px" }}>×</span>
             </div>
-          )}
+
+            {/* Undo/Redo buttons */}
+            <div style={{ display: "flex", gap: 4, marginBottom: 8 }}>
+              <button onClick={undo} disabled={historyIdx <= 0}
+                style={{ flex: 1, padding: "4px", fontSize: 10, border: `1px solid ${t.cb}`, background: "transparent", color: historyIdx <= 0 ? t.cb : t.t2, borderRadius: 4, cursor: "pointer" }}>
+                ↩ 실행취소
+              </button>
+              <button onClick={redo} disabled={historyIdx >= history.length - 1}
+                style={{ flex: 1, padding: "4px", fontSize: 10, border: `1px solid ${t.cb}`, background: "transparent", color: historyIdx >= history.length - 1 ? t.cb : t.t2, borderRadius: 4, cursor: "pointer" }}>
+                ↪ 다시실행
+              </button>
+            </div>
+
+            {/* Font size + weight */}
+            <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+              <div style={{ flex: 1 }}>
+                <Slider t={t} label="크기" value={(sel.so.fontSize || "14").replace("px", "")}
+                  onChange={v => updateStyle("fontSize", v)} min={8} max={72} />
+              </div>
+              <div style={{ width: 55, flexShrink: 0 }}>
+                <div style={{ fontSize: 10, color: t.t3, marginBottom: 2 }}>굵기</div>
+                <select value={sel.so.fontWeight || "400"}
+                  onChange={e => updateStyle("fontWeight", e.target.value)}
+                  style={{ width: "100%", padding: "3px 2px", background: t.ib, border: `1px solid ${t.ibr}`, borderRadius: 4, fontSize: 10, color: t.tx, outline: "none" }}>
+                  {["300", "400", "500", "600", "700"].map(w => <option key={w} value={w}>{w}</option>)}
+                </select>
+              </div>
+            </div>
+
+            {/* Colors */}
+            <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 10, color: t.t3, marginBottom: 2 }}>글자색</div>
+                <ColorInput propKey="color" so={sel.so} onUpdate={updateStyle} t={t} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 10, color: t.t3, marginBottom: 2 }}>배경색</div>
+                <ColorInput propKey="background" so={sel.so} onUpdate={updateStyle} t={t} />
+              </div>
+            </div>
+
+            {/* Padding */}
+            <Slider t={t} label="패딩" value={parseInt(sel.so.padding || "0")}
+              onChange={v => updateStyle("padding", v + "px")} min={0} max={100} />
+
+            {/* Border radius */}
+            <Slider t={t} label="둥글기" value={(sel.so.borderRadius || "0").replace("px", "")}
+              onChange={v => updateStyle("borderRadius", v)} min={0} max={60} />
+
+            {/* Gap */}
+            <Slider t={t} label="간격(gap)" value={(sel.so.gap || "0").replace("px", "")}
+              onChange={v => updateStyle("gap", v)} min={0} max={60} />
+
+            {/* Opacity */}
+            <Slider t={t} label="투명도" value={sel.so.opacity || "1"}
+              onChange={v => updateStyle("opacity", v)} min={0} max={1} step={0.05} unit="" />
+
+            {/* Text align */}
+            <div style={{ marginBottom: 8 }}>
+              <div style={{ fontSize: 10, color: t.t3, marginBottom: 2 }}>정렬</div>
+              <div style={{ display: "flex", gap: 2 }}>
+                {[["left", "좌"], ["center", "중"], ["right", "우"]].map(([v, label]) => (
+                  <div key={v} onClick={() => updateStyle("textAlign", v)}
+                    style={{
+                      flex: 1, padding: "4px 0", textAlign: "center", fontSize: 10,
+                      cursor: "pointer", borderRadius: 4,
+                      background: (sel.so.textAlign || "left") === v ? t.abg : "transparent",
+                      border: `1px solid ${(sel.so.textAlign || "left") === v ? t.ac : t.ibr}`,
+                      color: (sel.so.textAlign || "left") === v ? t.ac : t.t3,
+                    }}>{label}</div>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ fontSize: 9, color: t.t3, textAlign: "center", marginTop: 4 }}>
+              Ctrl+Z 실행취소 · Ctrl+Shift+Z 다시실행 · Esc 닫기
+            </div>
+          </div>
+        )}
+
+        {/* Right Panel: Storyboard only */}
+        <div style={{ width: 320, flexShrink: 0, display: "flex", flexDirection: "column", background: t.card, borderLeft: `1px solid ${t.cb}` }}>
+          <StoryboardPanel project={project} onUpdateProject={onSave} t={t} />
         </div>
       </div>
     </div>
