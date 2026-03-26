@@ -133,10 +133,8 @@ export default function Editor({ project, onBack, onSave, t }) {
     const newEls = els.map((el, i) => {
       if (i !== selIdx) return el;
       const s = { ...el.so };
-      if (key === "fontSize") s.fontSize = value + "px";
-      else if (key === "borderRadius") s.borderRadius = value + "px";
-      else if (key === "gap") s.gap = value + "px";
-      else if (key === "letterSpacing") s.letterSpacing = value + "px";
+      const pxKeys = ["fontSize", "borderRadius", "gap", "letterSpacing"];
+      if (pxKeys.includes(key)) s[key] = value + "px";
       else s[key] = value;
       return { ...el, so: s };
     });
@@ -519,11 +517,179 @@ export default function Editor({ project, onBack, onSave, t }) {
                 <Slider label="자간" value={(sel.so.letterSpacing || "0").replace("px", "")}
                   onChange={v => updateStyle("letterSpacing", v)} min={-2} max={10} step={0.1} />
 
-                <Slider label="선 두께" value={(sel.so.borderWidth || "0").replace("px", "")}
-                  onChange={v => updateStyle("borderWidth", v + "px")} min={0} max={10} />
+                {/* 폰트 패밀리 */}
+                <div style={{ marginBottom: 10 }}>
+                  <div style={{ fontSize: 11, color: t.t3, marginBottom: 4 }}>폰트 패밀리</div>
+                  <select value={sel.so.fontFamily || "system-ui"}
+                    onChange={e => updateStyle("fontFamily", e.target.value)}
+                    style={{
+                      width: "100%", padding: "6px 8px", background: t.ib,
+                      border: `1px solid ${t.ibr}`, borderRadius: 4,
+                      fontSize: 12, color: t.tx, outline: "none"
+                    }}>
+                    {["system-ui, sans-serif", "serif", "monospace", "cursive", "'Noto Sans KR', sans-serif", "'Roboto', sans-serif"].map(f =>
+                      <option key={f} value={f}>{f.split(",")[0].replace(/'/g, "")}</option>
+                    )}
+                  </select>
+                </div>
 
-                <Slider label="그림자" value="none"
-                  onChange={() => {}} min={0} max={1} unit="" />
+                {/* 마진 (상/우/하/좌) */}
+                {(() => {
+                  const raw = sel.so.margin || "0";
+                  const parts = raw.replace(/px/g, "").trim().split(/\s+/).map(Number);
+                  let mt, mr, mb, ml;
+                  if (parts.length === 1) { mt = mr = mb = ml = parts[0] || 0; }
+                  else if (parts.length === 2) { mt = mb = parts[0] || 0; mr = ml = parts[1] || 0; }
+                  else if (parts.length === 3) { mt = parts[0] || 0; mr = ml = parts[1] || 0; mb = parts[2] || 0; }
+                  else { mt = parts[0] || 0; mr = parts[1] || 0; mb = parts[2] || 0; ml = parts[3] || 0; }
+                  const setMar = (top, right, bottom, left) =>
+                    updateStyle("margin", `${top}px ${right}px ${bottom}px ${left}px`);
+                  return (
+                    <div style={{ marginBottom: 10 }}>
+                      <div style={{ fontSize: 11, color: t.t3, marginBottom: 6 }}>마진</div>
+                      <Slider label="상" value={mt} onChange={v => setMar(Number(v), mr, mb, ml)} min={-50} max={100} />
+                      <Slider label="우" value={mr} onChange={v => setMar(mt, Number(v), mb, ml)} min={-50} max={100} />
+                      <Slider label="하" value={mb} onChange={v => setMar(mt, mr, Number(v), ml)} min={-50} max={100} />
+                      <Slider label="좌" value={ml} onChange={v => setMar(mt, mr, mb, Number(v))} min={-50} max={100} />
+                    </div>
+                  );
+                })()}
+
+                {/* 너비 / 높이 */}
+                <div style={{ marginBottom: 10 }}>
+                  <div style={{ fontSize: 11, color: t.t3, marginBottom: 4 }}>너비</div>
+                  <input value={sel.so.width || "auto"}
+                    onChange={e => updateStyle("width", e.target.value)}
+                    placeholder="auto, 100px, 50%"
+                    style={{
+                      width: "100%", padding: "6px 8px", background: t.ib,
+                      border: `1px solid ${t.ibr}`, borderRadius: 4,
+                      fontSize: 12, color: t.tx, fontFamily: "monospace", outline: "none",
+                      boxSizing: "border-box"
+                    }} />
+                </div>
+                <div style={{ marginBottom: 10 }}>
+                  <div style={{ fontSize: 11, color: t.t3, marginBottom: 4 }}>높이</div>
+                  <input value={sel.so.height || "auto"}
+                    onChange={e => updateStyle("height", e.target.value)}
+                    placeholder="auto, 100px, 50%"
+                    style={{
+                      width: "100%", padding: "6px 8px", background: t.ib,
+                      border: `1px solid ${t.ibr}`, borderRadius: 4,
+                      fontSize: 12, color: t.tx, fontFamily: "monospace", outline: "none",
+                      boxSizing: "border-box"
+                    }} />
+                </div>
+
+                {/* Border (선) */}
+                <div style={{ marginBottom: 10 }}>
+                  <div style={{ fontSize: 11, color: t.t3, marginBottom: 6 }}>선 (border)</div>
+                  <Slider label="두께" value={parseInt(sel.so.borderWidth || "0")}
+                    onChange={v => updateStyle("borderWidth", v + "px")} min={0} max={10} />
+                  <div style={{ marginBottom: 6 }}>
+                    <div style={{ fontSize: 11, color: t.t3, marginBottom: 4 }}>색상</div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <input type="color" value={(sel.so.borderColor || "#000000").startsWith("#") ? sel.so.borderColor : "#000000"}
+                        onChange={e => updateStyle("borderColor", e.target.value)}
+                        style={{ width: 28, height: 28, border: `1px solid ${t.ibr}`, borderRadius: 4, padding: 0, cursor: "pointer" }} />
+                      <input value={sel.so.borderColor || ""}
+                        onChange={e => updateStyle("borderColor", e.target.value)}
+                        style={{
+                          flex: 1, padding: "4px 8px", background: t.ib,
+                          border: `1px solid ${t.ibr}`, borderRadius: 4,
+                          fontSize: 11, color: t.tx, fontFamily: "monospace", outline: "none"
+                        }} />
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 11, color: t.t3, marginBottom: 4 }}>스타일</div>
+                    <div style={{ display: "flex", gap: 2 }}>
+                      {["none", "solid", "dashed", "dotted"].map(s => (
+                        <div key={s} onClick={() => updateStyle("borderStyle", s)}
+                          style={{
+                            flex: 1, padding: "5px 0", textAlign: "center", fontSize: 10,
+                            cursor: "pointer", borderRadius: 4,
+                            background: (sel.so.borderStyle || "none") === s ? t.abg : "transparent",
+                            border: `1px solid ${(sel.so.borderStyle || "none") === s ? t.ac : t.ibr}`,
+                            color: (sel.so.borderStyle || "none") === s ? t.ac : t.t3,
+                          }}>
+                          {s}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Display */}
+                <div style={{ marginBottom: 10 }}>
+                  <div style={{ fontSize: 11, color: t.t3, marginBottom: 4 }}>display</div>
+                  <div style={{ display: "flex", gap: 2 }}>
+                    {["block", "flex", "grid", "inline", "none"].map(d => (
+                      <div key={d} onClick={() => updateStyle("display", d)}
+                        style={{
+                          flex: 1, padding: "5px 0", textAlign: "center", fontSize: 10,
+                          cursor: "pointer", borderRadius: 4,
+                          background: (sel.so.display || "block") === d ? t.abg : "transparent",
+                          border: `1px solid ${(sel.so.display || "block") === d ? t.ac : t.ibr}`,
+                          color: (sel.so.display || "block") === d ? t.ac : t.t3,
+                        }}>
+                        {d}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Opacity */}
+                <Slider label="opacity" value={sel.so.opacity || "1"}
+                  onChange={v => updateStyle("opacity", v)} min={0} max={1} step={0.05} unit="" />
+
+                {/* Box Shadow */}
+                <div style={{ marginBottom: 10 }}>
+                  <div style={{ fontSize: 11, color: t.t3, marginBottom: 4 }}>box-shadow</div>
+                  <input value={sel.so.boxShadow || "none"}
+                    onChange={e => updateStyle("boxShadow", e.target.value)}
+                    placeholder="0 4px 12px rgba(0,0,0,0.2)"
+                    style={{
+                      width: "100%", padding: "6px 8px", background: t.ib,
+                      border: `1px solid ${t.ibr}`, borderRadius: 4,
+                      fontSize: 11, color: t.tx, fontFamily: "monospace", outline: "none",
+                      boxSizing: "border-box"
+                    }} />
+                  <div style={{ display: "flex", gap: 4, marginTop: 4 }}>
+                    {[
+                      ["없음", "none"],
+                      ["약한", "0 2px 8px rgba(0,0,0,0.15)"],
+                      ["중간", "0 4px 16px rgba(0,0,0,0.25)"],
+                      ["강한", "0 8px 32px rgba(0,0,0,0.4)"],
+                    ].map(([label, val]) => (
+                      <button key={label} onClick={() => updateStyle("boxShadow", val)}
+                        style={{
+                          flex: 1, padding: "4px 0", fontSize: 9, border: `1px solid ${t.ibr}`,
+                          background: sel.so.boxShadow === val ? t.abg : "transparent",
+                          color: sel.so.boxShadow === val ? t.ac : t.t3,
+                          cursor: "pointer", borderRadius: 3
+                        }}>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Cursor */}
+                <div style={{ marginBottom: 10 }}>
+                  <div style={{ fontSize: 11, color: t.t3, marginBottom: 4 }}>cursor</div>
+                  <select value={sel.so.cursor || "default"}
+                    onChange={e => updateStyle("cursor", e.target.value)}
+                    style={{
+                      width: "100%", padding: "6px 8px", background: t.ib,
+                      border: `1px solid ${t.ibr}`, borderRadius: 4,
+                      fontSize: 12, color: t.tx, outline: "none"
+                    }}>
+                    {["default", "pointer", "text", "move", "not-allowed", "grab", "crosshair"].map(c =>
+                      <option key={c} value={c}>{c}</option>
+                    )}
+                  </select>
+                </div>
               </div>
             )
           )}
