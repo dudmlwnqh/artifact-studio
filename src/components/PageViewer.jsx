@@ -1,4 +1,5 @@
 import { useState, useRef } from "react";
+import JsxRenderer from "./JsxRenderer.jsx";
 
 export default function PageViewer({ project, onUpdateProject, t, onEditPage }) {
   const [leftMode, setLeftMode] = useState("page");
@@ -108,8 +109,7 @@ export default function PageViewer({ project, onUpdateProject, t, onEditPage }) 
                   border: "1px solid rgba(255,255,255,0.06)",
                   position: "relative", flexShrink: 0
                 }}>
-                  <div
-                    dangerouslySetInnerHTML={{ __html: current?.code || "" }}
+                  <JsxRenderer code={current?.code || ""}
                     style={{ userSelect: "none", WebkitUserSelect: "none", minHeight: "100%" }}
                   />
                   {/* Edit button floating */}
