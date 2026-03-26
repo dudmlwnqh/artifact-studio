@@ -634,16 +634,37 @@ export default function Editor({ project, onBack, onSave, t }) {
       {/* Main area */}
       <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
 
-        {/* Left: Preview or Code */}
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", borderRight: viewMode === "preview" ? `1px solid ${t.cb}` : "none", minWidth: 0 }}>
+        {/* Left: PageViewer (preview) or Code editor */}
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", borderRight: `1px solid ${t.cb}`, minWidth: 0 }}>
           {viewMode === "preview" ? (
+            <PageViewer project={project} onUpdateProject={onSave} t={t}
+              onEditPage={(page) => { setCode(page.code); setSelIdx(null); }} />
+          ) : viewMode === "code" ? (
+            /* Code editor mode */
+            <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+              <textarea value={formattedCode}
+                onChange={e => { setCode(e.target.value); setSelIdx(null); }}
+                style={{
+                  flex: 1, padding: 16, background: t.pv,
+                  border: "none", color: t.gn, fontFamily: "monospace",
+                  fontSize: 13, lineHeight: 1.7, resize: "none", outline: "none",
+                  boxSizing: "border-box"
+                }}
+                spellCheck={false}
+                placeholder="HTML 코드를 편집하세요..."
+              />
+              <div style={{ padding: "4px 12px", fontSize: 10, color: t.t3, borderTop: `1px solid ${t.cb}`, flexShrink: 0 }}>
+                코드 직접 편집 가능 · 미리보기 탭에서 결과 확인
+              </div>
+            </div>
+          ) : viewMode === "edit" ? (
             <>
+              {/* Edit mode preview with element selection */}
               <div data-preview-area style={{
                 flex: 1, padding: 24, background: t.pv,
                 display: "flex", alignItems: "center", justifyContent: "center",
                 position: "relative", overflow: "auto"
               }}>
-                {/* 미리보기 내부 모든 요소 선택/커서 방지 */}
                 <style>{`[data-preview-area] * { user-select: none !important; -webkit-user-select: none !important; cursor: inherit !important; }`}</style>
                 <div ref={previewRef}
                   onClick={eyedropper ? handleEyedropperClick : handlePreviewClick}
@@ -812,25 +833,7 @@ export default function Editor({ project, onBack, onSave, t }) {
                 {interactionMode ? "요소를 클릭/롱프레스하면 등록된 인터랙션이 실행됩니다" : "클릭=선택, 더블클릭=텍스트 편집"}
               </div>
             </>
-          ) : (
-            /* Code view mode */
-            <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
-              <textarea value={formattedCode}
-                onChange={e => { setCode(e.target.value); setSelIdx(null); }}
-                style={{
-                  flex: 1, padding: 16, background: t.pv,
-                  border: "none", color: t.gn, fontFamily: "monospace",
-                  fontSize: 13, lineHeight: 1.7, resize: "none", outline: "none",
-                  boxSizing: "border-box"
-                }}
-                spellCheck={false}
-                placeholder="HTML 코드를 편집하세요..."
-              />
-              <div style={{ padding: "4px 12px", fontSize: 10, color: t.t3, borderTop: `1px solid ${t.cb}`, flexShrink: 0 }}>
-                코드 직접 편집 가능 · 미리보기 탭에서 결과 확인
-              </div>
-            </div>
-          )}
+          ) : null}
         </div>
 
         {/* Right Panel: Storyboard + Properties - ALWAYS VISIBLE */}
