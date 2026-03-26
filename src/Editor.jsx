@@ -96,8 +96,10 @@ function formatHTML(code) {
 }
 
 export default function Editor({ project, onBack, onSave, t }) {
-  const [editingPage, setEditingPage] = useState(null); // null = page viewer, { page } = editing specific page
-  const [code, setCode] = useState(project.code || "");
+  // Auto-start editing first page or project code
+  const firstPage = (project.pages || [])[0] || null;
+  const [editingPage, setEditingPage] = useState(firstPage);
+  const [code, setCode] = useState(firstPage?.code || project.code || "");
   const [selIdx, setSelIdx] = useState(null);
   const [els, setEls] = useState([]);
   const [copied, setCopied] = useState(false);
@@ -547,30 +549,6 @@ export default function Editor({ project, onBack, onSave, t }) {
 
   // (Slider and ColorInput are defined outside Editor to prevent remount on re-render)
 
-  // Page viewer mode (no specific page being edited)
-  if (!editingPage) {
-    return (
-      <div style={{ background: t.bg, color: t.tx, fontFamily: "system-ui, sans-serif", height: "100vh", display: "flex", flexDirection: "column" }}>
-        {/* Header */}
-        <div style={{
-          display: "flex", alignItems: "center", gap: 8, padding: "8px 14px",
-          borderBottom: `1px solid ${t.cb}`, background: t.bg, zIndex: 10, flexShrink: 0
-        }}>
-          <span onClick={onBack} style={{ cursor: "pointer", color: t.t3, fontSize: 18, padding: "0 4px" }}>←</span>
-          <b style={{ fontSize: 15 }}>{project.name}</b>
-          <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
-            <button onClick={handleSave}
-              style={{ padding: "4px 10px", fontSize: 11, border: `1px solid ${t.gn}`, background: "transparent", color: t.gn, cursor: "pointer", borderRadius: 4, fontWeight: 600 }}>
-              저장
-            </button>
-          </div>
-        </div>
-        <PageViewer project={project} onUpdateProject={onSave} t={t} onEditPage={startEditPage} />
-      </div>
-    );
-  }
-
-  // Page editing mode
   return (
     <div style={{ background: t.bg, color: t.tx, fontFamily: "system-ui, sans-serif", height: "100vh", display: "flex", flexDirection: "column" }}>
       {/* Header */}
@@ -578,9 +556,8 @@ export default function Editor({ project, onBack, onSave, t }) {
         display: "flex", alignItems: "center", gap: 8, padding: "8px 14px",
         borderBottom: `1px solid ${t.cb}`, background: t.bg, zIndex: 10, flexShrink: 0
       }}>
-        <span onClick={backToViewer} style={{ cursor: "pointer", color: t.t3, fontSize: 18, padding: "0 4px" }}>←</span>
-        <b style={{ fontSize: 15 }}>{editingPage.name}</b>
-        <span style={{ fontSize: 11, color: t.t3 }}>{project.name}</span>
+        <span onClick={onBack} style={{ cursor: "pointer", color: t.t3, fontSize: 18, padding: "0 4px" }}>←</span>
+        <b style={{ fontSize: 15 }}>{project.name}</b>
 
         {/* View mode toggle: 👁 / </> pill */}
         <div style={{
