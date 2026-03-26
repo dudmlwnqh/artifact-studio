@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 
 function parseStyle(str) {
   const o = {};
@@ -19,12 +19,46 @@ function styleToStr(o) {
     .join(";");
 }
 
+// Simple syntax highlighter for HTML
+function highlightHTML(code, colors) {
+  const escaped = code
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+  return escaped
+    // Tags
+    .replace(/(&lt;\/?)([\w-]+)/g, `$1<span style="color:${colors.tag}">$2</span>`)
+    // Attribute names
+    .replace(/([\w-]+)(=)/g, `<span style="color:${colors.attr}">$1</span>$2`)
+    // Quoted strings
+    .replace(/(&quot;|")(.*?)(\1)/g, `<span style="color:${colors.str}">"$2"</span>`)
+    // Closing >
+    .replace(/(&gt;)/g, `<span style="color:${colors.tag}">&gt;</span>`);
+}
+
+// Format HTML with indentation
+function formatHTML(code) {
+  let indent = 0;
+  const lines = [];
+  // Split by tags
+  const tokens = code.replace(/>\s*</g, ">\n<").split("\n");
+  tokens.forEach(token => {
+    const trimmed = token.trim();
+    if (!trimmed) return;
+    if (trimmed.startsWith("</")) indent = Math.max(0, indent - 1);
+    lines.push("  ".repeat(indent) + trimmed);
+    if (trimmed.match(/^<[^/!][^>]*[^/]>$/) && !trimmed.match(/^<(br|hr|img|input|meta|link)/i)) {
+      indent++;
+    }
+  });
+  return lines.join("\n");
+}
+
 export default function Editor({ project, onBack, onSave, t }) {
   const [code, setCode] = useState(project.code || "");
   const [selIdx, setSelIdx] = useState(null);
   const [els, setEls] = useState([]);
   const [copied, setCopied] = useState(false);
-  const [showCodeInput, setShowCodeInput] = useState(false);
   const [rightTab, setRightTab] = useState("style"); // "style" | "interaction"
   const [interactions, setInteractions] = useState(project.interactions || []);
   const [newTrigger, setNewTrigger] = useState("tap");
@@ -33,7 +67,19 @@ export default function Editor({ project, onBack, onSave, t }) {
   const [toast, setToast] = useState(null);
   const [bottomSheet, setBottomSheet] = useState(null);
   const [modal, setModal] = useState(null);
+  const [codeEditing, setCodeEditing] = useState(false);
   const previewRef = useRef(null);
+
+  // Syntax highlight colors
+  const hlColors = {
+    tag: t.ac,
+    attr: t.am,
+    str: t.gn,
+  };
+
+  // Formatted + highlighted code
+  const formattedCode = useMemo(() => formatHTML(code), [code]);
+  const highlightedCode = useMemo(() => highlightHTML(formattedCode, hlColors), [formattedCode, hlColors.tag]);
 
   // Parse HTML into elements array
   useEffect(() => {
@@ -136,7 +182,7 @@ export default function Editor({ project, onBack, onSave, t }) {
 
   // Copy code
   const handleCopy = () => {
-    navigator.clipboard.writeText(code).catch(() => {});
+    navigator.clipboard.writeText(formattedCode).catch(() => {});
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   };
@@ -149,7 +195,6 @@ export default function Editor({ project, onBack, onSave, t }) {
     const idx = findElIdx(e.target);
     if (idx < 0) return;
     longPressTimer.current = setTimeout(() => {
-      // Long press trigger
       interactions.filter(i => i.elIdx === idx && i.trigger === "longPress")
         .forEach(i => fireAction(i.action, i.message));
       longPressTimer.current = null;
@@ -182,11 +227,30 @@ export default function Editor({ project, onBack, onSave, t }) {
     const found = findElIdx(e.target);
     if (found >= 0 && found < els.length) {
       setSelIdx(found);
-      // Fire tap interactions for this element
       interactions.filter(i => i.elIdx === found && i.trigger === "tap")
         .forEach(i => fireAction(i.action, i.message));
     }
   };
+
+  // Highlight selected element in preview
+  useEffect(() => {
+    if (!previewRef.current) return;
+    let idx = 0;
+    const walk = (node) => {
+      if (node.nodeType === 1) {
+        if (idx === selIdx) {
+          node.style.outline = "2px dashed " + t.ac;
+          node.style.outlineOffset = "2px";
+        } else {
+          node.style.outline = "";
+          node.style.outlineOffset = "";
+        }
+        idx++;
+        Array.from(node.children).forEach(walk);
+      }
+    };
+    Array.from(previewRef.current.children).forEach(walk);
+  });
 
   const sel = selIdx !== null ? els[selIdx] : null;
 
@@ -232,23 +296,15 @@ export default function Editor({ project, onBack, onSave, t }) {
   };
 
   return (
-    <div style={{ background: t.bg, color: t.tx, fontFamily: "system-ui, sans-serif", minHeight: "100vh" }}>
+    <div style={{ background: t.bg, color: t.tx, fontFamily: "system-ui, sans-serif", height: "100vh", display: "flex", flexDirection: "column" }}>
       {/* Header */}
       <div style={{
         display: "flex", alignItems: "center", gap: 8, padding: "10px 14px",
-        borderBottom: `1px solid ${t.cb}`, position: "sticky", top: 0, background: t.bg, zIndex: 10
+        borderBottom: `1px solid ${t.cb}`, background: t.bg, zIndex: 10, flexShrink: 0
       }}>
         <span onClick={onBack} style={{ cursor: "pointer", color: t.t3, fontSize: 18, padding: "0 4px" }}>←</span>
         <b style={{ fontSize: 15 }}>{project.name}</b>
         <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
-          <button onClick={() => setShowCodeInput(!showCodeInput)}
-            style={{ padding: "5px 12px", fontSize: 11, border: `1px solid ${t.cb}`, background: showCodeInput ? t.abg : "transparent", color: showCodeInput ? t.ac : t.t3, cursor: "pointer", borderRadius: 4 }}>
-            {showCodeInput ? "코드 닫기" : "코드 입력"}
-          </button>
-          <button onClick={handleCopy}
-            style={{ padding: "5px 12px", fontSize: 11, border: `1px solid ${t.ac}`, background: t.abg, color: copied ? t.gn : t.ac, cursor: "pointer", borderRadius: 4 }}>
-            {copied ? "복사됨 ✓" : "코드 복사"}
-          </button>
           <button onClick={handleSave}
             style={{ padding: "5px 12px", fontSize: 11, border: `1px solid ${t.gn}`, background: "transparent", color: t.gn, cursor: "pointer", borderRadius: 4, fontWeight: 600 }}>
             저장
@@ -256,35 +312,39 @@ export default function Editor({ project, onBack, onSave, t }) {
         </div>
       </div>
 
-      {/* Code input */}
-      {showCodeInput && (
-        <div style={{ borderBottom: `1px solid ${t.cb}` }}>
-          <textarea value={code}
-            onChange={e => { setCode(e.target.value); setSelIdx(null); }}
+      {/* Element bar */}
+      <div style={{
+        padding: "6px 14px", display: "flex", gap: 4, overflowX: "auto",
+        background: t.card, borderBottom: `1px solid ${t.cb}`, flexShrink: 0
+      }}>
+        <span style={{ fontSize: 10, color: t.t3, flexShrink: 0, marginRight: 4, lineHeight: "24px" }}>요소:</span>
+        {els.map((el, i) => (
+          <span key={i} onClick={() => setSelIdx(i)}
             style={{
-              width: "100%", height: 140, padding: 12, background: t.pv,
-              border: "none", color: t.gn, fontFamily: "monospace",
-              fontSize: 12, lineHeight: 1.6, resize: "vertical", outline: "none",
-              boxSizing: "border-box"
-            }}
-            placeholder="HTML / JSX 코드를 붙여넣으세요..."
-          />
-        </div>
-      )}
+              fontSize: 10, padding: "4px 10px", cursor: "pointer", flexShrink: 0,
+              borderRadius: 4, lineHeight: "16px",
+              background: selIdx === i ? t.abg : "transparent",
+              color: selIdx === i ? t.ac : t.t3,
+              border: `1px solid ${selIdx === i ? t.ac : t.cb}`
+            }}>
+            {"<" + el.tag + ">"}{el.tc ? ` "${el.tc.slice(0, 8)}"` : ""}
+          </span>
+        ))}
+      </div>
 
-      {/* Main area: preview + properties side by side */}
-      <div style={{ display: "flex", borderBottom: `1px solid ${t.cb}` }}>
+      {/* 3-panel main area */}
+      <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
 
-        {/* Preview */}
-        <div style={{ flex: 1, borderRight: `1px solid ${t.cb}` }}>
-          <div style={{ padding: "6px 12px", borderBottom: `1px solid ${t.cb}`, fontSize: 11, color: t.t3 }}>
-            미리보기
-            {sel && <span style={{ marginLeft: 8, color: t.ac, fontWeight: 500 }}>&lt;{sel.tag}&gt; 선택됨</span>}
+        {/* Panel A: Preview */}
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", borderRight: `1px solid ${t.cb}`, minWidth: 0 }}>
+          <div style={{ padding: "6px 12px", borderBottom: `1px solid ${t.cb}`, fontSize: 11, color: t.t3, flexShrink: 0 }}>
+            A. 라이브 미리보기
+            {sel && <span style={{ marginLeft: 8, color: t.ac, fontWeight: 500 }}>{"<" + sel.tag + ">"} 선택됨</span>}
           </div>
           <div style={{
-            minHeight: 350, padding: 24, background: t.pv,
+            flex: 1, padding: 24, background: t.pv,
             display: "flex", alignItems: "center", justifyContent: "center",
-            position: "relative"
+            position: "relative", overflow: "auto"
           }}>
             <div ref={previewRef} onClick={handlePreviewClick}
               onMouseDown={handlePreviewMouseDown} onMouseUp={handlePreviewMouseUp}
@@ -296,8 +356,7 @@ export default function Editor({ project, onBack, onSave, t }) {
               <div style={{
                 position: "absolute", bottom: 20, left: "50%", transform: "translateX(-50%)",
                 padding: "10px 20px", background: "#333", color: "#fff", borderRadius: 8,
-                fontSize: 13, boxShadow: "0 4px 12px rgba(0,0,0,0.3)", zIndex: 20,
-                animation: "fadeIn 0.3s"
+                fontSize: 13, boxShadow: "0 4px 12px rgba(0,0,0,0.3)", zIndex: 20
               }}>{toast}</div>
             )}
 
@@ -337,12 +396,15 @@ export default function Editor({ project, onBack, onSave, t }) {
               </div>
             )}
           </div>
+          <div style={{ padding: "4px 12px", fontSize: 10, color: t.t3, borderTop: `1px solid ${t.cb}`, flexShrink: 0 }}>
+            렌더링된 결과물. 요소를 클릭하면 선택됨.
+          </div>
         </div>
 
-        {/* Right panel */}
-        <div style={{ width: 260, flexShrink: 0, background: t.card }}>
+        {/* Panel B: Properties / Interaction */}
+        <div style={{ width: 240, flexShrink: 0, display: "flex", flexDirection: "column", borderRight: `1px solid ${t.cb}`, background: t.card }}>
           {/* Tab switcher */}
-          <div style={{ display: "flex", borderBottom: `1px solid ${t.cb}` }}>
+          <div style={{ display: "flex", borderBottom: `1px solid ${t.cb}`, flexShrink: 0 }}>
             {[["style", "속성 편집"], ["interaction", "인터랙션"]].map(([k, label]) => (
               <button key={k} onClick={() => setRightTab(k)}
                 style={{
@@ -362,107 +424,113 @@ export default function Editor({ project, onBack, onSave, t }) {
                 ← 미리보기에서<br />요소를 클릭하세요
               </div>
             ) : (
-              <div style={{ maxHeight: 500, overflow: "auto", padding: "10px 14px" }}>
+              <div style={{ flex: 1, overflow: "auto", padding: "10px 14px" }}>
                 {/* Selected element info */}
                 <div style={{
                   padding: "6px 10px", marginBottom: 12, background: t.abg,
                   borderRadius: 6, fontSize: 12, color: t.ac, fontWeight: 500
                 }}>
-                  &lt;{sel.tag}&gt;
+                  {"<" + sel.tag + ">"}
                   {sel.tc && <span style={{ fontWeight: 400, color: t.t3, marginLeft: 4 }}>"{sel.tc.slice(0, 12)}"</span>}
                 </div>
 
                 {/* Font size */}
-              <Slider label="글자 크기" value={(sel.so.fontSize || "14").replace("px", "")}
-                onChange={v => updateStyle("fontSize", v)} min={8} max={72} />
+                <Slider label="글자 크기" value={(sel.so.fontSize || "14").replace("px", "")}
+                  onChange={v => updateStyle("fontSize", v)} min={8} max={72} />
 
-              {/* Font weight */}
-              <div style={{ marginBottom: 10 }}>
-                <div style={{ fontSize: 11, color: t.t3, marginBottom: 4 }}>글자 굵기</div>
-                <select value={sel.so.fontWeight || "400"}
-                  onChange={e => updateStyle("fontWeight", e.target.value)}
-                  style={{
-                    width: "100%", padding: "6px 8px", background: t.ib,
-                    border: `1px solid ${t.ibr}`, borderRadius: 4,
-                    fontSize: 12, color: t.tx, outline: "none"
-                  }}>
-                  {["300", "400", "500", "600", "700"].map(w => <option key={w} value={w}>{w}</option>)}
-                </select>
-              </div>
-
-              <ColorField label="글자색" propKey="color" />
-              <ColorField label="배경색" propKey="background" />
-
-              {/* Text align */}
-              <div style={{ marginBottom: 10 }}>
-                <div style={{ fontSize: 11, color: t.t3, marginBottom: 4 }}>텍스트 정렬</div>
-                <div style={{ display: "flex", gap: 2 }}>
-                  {[["left", "좌"], ["center", "중"], ["right", "우"]].map(([v, label]) => (
-                    <div key={v} onClick={() => updateStyle("textAlign", v)}
-                      style={{
-                        flex: 1, padding: "6px 0", textAlign: "center", fontSize: 11,
-                        cursor: "pointer", borderRadius: 4,
-                        background: (sel.so.textAlign || "left") === v ? t.abg : "transparent",
-                        border: `1px solid ${(sel.so.textAlign || "left") === v ? t.ac : t.ibr}`,
-                        color: (sel.so.textAlign || "left") === v ? t.ac : t.t3,
-                        fontWeight: (sel.so.textAlign || "left") === v ? 600 : 400
-                      }}>
-                      {label}
-                    </div>
-                  ))}
+                {/* Font weight */}
+                <div style={{ marginBottom: 10 }}>
+                  <div style={{ fontSize: 11, color: t.t3, marginBottom: 4 }}>글자 굵기</div>
+                  <select value={sel.so.fontWeight || "400"}
+                    onChange={e => updateStyle("fontWeight", e.target.value)}
+                    style={{
+                      width: "100%", padding: "6px 8px", background: t.ib,
+                      border: `1px solid ${t.ibr}`, borderRadius: 4,
+                      fontSize: 12, color: t.tx, outline: "none"
+                    }}>
+                    {["300", "400", "500", "600", "700"].map(w => <option key={w} value={w}>{w}</option>)}
+                  </select>
                 </div>
-              </div>
 
-              {/* Padding - 7 sliders */}
-              {(() => {
-                const raw = sel.so.padding || "0";
-                const parts = raw.replace(/px/g, "").trim().split(/\s+/).map(Number);
-                let pt, pr, pb, pl;
-                if (parts.length === 1) { pt = pr = pb = pl = parts[0] || 0; }
-                else if (parts.length === 2) { pt = pb = parts[0] || 0; pr = pl = parts[1] || 0; }
-                else if (parts.length === 3) { pt = parts[0] || 0; pr = pl = parts[1] || 0; pb = parts[2] || 0; }
-                else { pt = parts[0] || 0; pr = parts[1] || 0; pb = parts[2] || 0; pl = parts[3] || 0; }
-                const setPad = (top, right, bottom, left) =>
-                  updateStyle("padding", `${top}px ${right}px ${bottom}px ${left}px`);
-                return (
-                  <div style={{ marginBottom: 10 }}>
-                    <div style={{ fontSize: 11, color: t.t3, marginBottom: 6 }}>패딩</div>
-                    <Slider label="전체" value={Math.round((pt + pr + pb + pl) / 4)}
-                      onChange={v => { const n = Number(v); setPad(n, n, n, n); }} min={0} max={100} />
-                    <Slider label="상하" value={Math.round((pt + pb) / 2)}
-                      onChange={v => { const n = Number(v); setPad(n, pr, n, pl); }} min={0} max={100} />
-                    <Slider label="좌우" value={Math.round((pl + pr) / 2)}
-                      onChange={v => { const n = Number(v); setPad(pt, n, pb, n); }} min={0} max={100} />
-                    <Slider label="상" value={pt}
-                      onChange={v => setPad(Number(v), pr, pb, pl)} min={0} max={100} />
-                    <Slider label="하" value={pb}
-                      onChange={v => setPad(pt, pr, Number(v), pl)} min={0} max={100} />
-                    <Slider label="좌" value={pl}
-                      onChange={v => setPad(pt, pr, pb, Number(v))} min={0} max={100} />
-                    <Slider label="우" value={pr}
-                      onChange={v => setPad(pt, Number(v), pb, pl)} min={0} max={100} />
+                <ColorField label="글자색" propKey="color" />
+                <ColorField label="배경색" propKey="background" />
+
+                {/* Text align */}
+                <div style={{ marginBottom: 10 }}>
+                  <div style={{ fontSize: 11, color: t.t3, marginBottom: 4 }}>텍스트 정렬</div>
+                  <div style={{ display: "flex", gap: 2 }}>
+                    {[["left", "좌"], ["center", "중"], ["right", "우"]].map(([v, label]) => (
+                      <div key={v} onClick={() => updateStyle("textAlign", v)}
+                        style={{
+                          flex: 1, padding: "6px 0", textAlign: "center", fontSize: 11,
+                          cursor: "pointer", borderRadius: 4,
+                          background: (sel.so.textAlign || "left") === v ? t.abg : "transparent",
+                          border: `1px solid ${(sel.so.textAlign || "left") === v ? t.ac : t.ibr}`,
+                          color: (sel.so.textAlign || "left") === v ? t.ac : t.t3,
+                          fontWeight: (sel.so.textAlign || "left") === v ? 600 : 400
+                        }}>
+                        {label}
+                      </div>
+                    ))}
                   </div>
-                );
-              })()}
+                </div>
 
-              <Slider label="둥글기" value={(sel.so.borderRadius || "0").replace("px", "")}
-                onChange={v => updateStyle("borderRadius", v)} min={0} max={60} />
+                {/* Padding - 7 sliders */}
+                {(() => {
+                  const raw = sel.so.padding || "0";
+                  const parts = raw.replace(/px/g, "").trim().split(/\s+/).map(Number);
+                  let pt, pr, pb, pl;
+                  if (parts.length === 1) { pt = pr = pb = pl = parts[0] || 0; }
+                  else if (parts.length === 2) { pt = pb = parts[0] || 0; pr = pl = parts[1] || 0; }
+                  else if (parts.length === 3) { pt = parts[0] || 0; pr = pl = parts[1] || 0; pb = parts[2] || 0; }
+                  else { pt = parts[0] || 0; pr = parts[1] || 0; pb = parts[2] || 0; pl = parts[3] || 0; }
+                  const setPad = (top, right, bottom, left) =>
+                    updateStyle("padding", `${top}px ${right}px ${bottom}px ${left}px`);
+                  return (
+                    <div style={{ marginBottom: 10 }}>
+                      <div style={{ fontSize: 11, color: t.t3, marginBottom: 6 }}>패딩</div>
+                      <Slider label="전체" value={Math.round((pt + pr + pb + pl) / 4)}
+                        onChange={v => { const n = Number(v); setPad(n, n, n, n); }} min={0} max={100} />
+                      <Slider label="상하" value={Math.round((pt + pb) / 2)}
+                        onChange={v => { const n = Number(v); setPad(n, pr, n, pl); }} min={0} max={100} />
+                      <Slider label="좌우" value={Math.round((pl + pr) / 2)}
+                        onChange={v => { const n = Number(v); setPad(pt, n, pb, n); }} min={0} max={100} />
+                      <Slider label="상" value={pt}
+                        onChange={v => setPad(Number(v), pr, pb, pl)} min={0} max={100} />
+                      <Slider label="하" value={pb}
+                        onChange={v => setPad(pt, pr, Number(v), pl)} min={0} max={100} />
+                      <Slider label="좌" value={pl}
+                        onChange={v => setPad(pt, pr, pb, Number(v))} min={0} max={100} />
+                      <Slider label="우" value={pr}
+                        onChange={v => setPad(pt, Number(v), pb, pl)} min={0} max={100} />
+                    </div>
+                  );
+                })()}
 
-              <Slider label="간격 (gap)" value={(sel.so.gap || "0").replace("px", "")}
-                onChange={v => updateStyle("gap", v)} min={0} max={60} />
+                <Slider label="둥글기" value={(sel.so.borderRadius || "0").replace("px", "")}
+                  onChange={v => updateStyle("borderRadius", v)} min={0} max={60} />
 
-              <Slider label="행간" value={sel.so.lineHeight || "1.5"}
-                onChange={v => updateStyle("lineHeight", v)} min={0.8} max={3} step={0.1} unit="" />
+                <Slider label="간격 (gap)" value={(sel.so.gap || "0").replace("px", "")}
+                  onChange={v => updateStyle("gap", v)} min={0} max={60} />
 
-              <Slider label="자간" value={(sel.so.letterSpacing || "0").replace("px", "")}
-                onChange={v => updateStyle("letterSpacing", v)} min={-2} max={10} step={0.1} />
-            </div>
-          ))}
+                <Slider label="행간" value={sel.so.lineHeight || "1.5"}
+                  onChange={v => updateStyle("lineHeight", v)} min={0.8} max={3} step={0.1} unit="" />
+
+                <Slider label="자간" value={(sel.so.letterSpacing || "0").replace("px", "")}
+                  onChange={v => updateStyle("letterSpacing", v)} min={-2} max={10} step={0.1} />
+
+                <Slider label="선 두께" value={(sel.so.borderWidth || "0").replace("px", "")}
+                  onChange={v => updateStyle("borderWidth", v + "px")} min={0} max={10} />
+
+                <Slider label="그림자" value="none"
+                  onChange={() => {}} min={0} max={1} unit="" />
+              </div>
+            )
+          )}
 
           {/* Interaction tab */}
           {rightTab === "interaction" && (
-            <div style={{ maxHeight: 500, overflow: "auto", padding: "10px 14px" }}>
-              {/* Add new interaction */}
+            <div style={{ flex: 1, overflow: "auto", padding: "10px 14px" }}>
               {selIdx === null ? (
                 <div style={{ padding: 20, textAlign: "center", fontSize: 12, color: t.t3 }}>
                   ← 미리보기에서 요소를 선택한 뒤<br />인터랙션을 추가하세요
@@ -470,7 +538,7 @@ export default function Editor({ project, onBack, onSave, t }) {
               ) : (
                 <div style={{ marginBottom: 16, padding: 12, background: t.abg, borderRadius: 8 }}>
                   <div style={{ fontSize: 12, color: t.ac, fontWeight: 600, marginBottom: 10 }}>
-                    &lt;{els[selIdx]?.tag}&gt; 에 인터랙션 추가
+                    {"<" + (els[selIdx]?.tag || "") + ">"} 에 인터랙션 추가
                   </div>
                   <div style={{ marginBottom: 8 }}>
                     <div style={{ fontSize: 11, color: t.t3, marginBottom: 4 }}>트리거</div>
@@ -537,39 +605,60 @@ export default function Editor({ project, onBack, onSave, t }) {
             </div>
           )}
         </div>
-      </div>
 
-      {/* Element bar */}
-      <div style={{
-        padding: "8px 14px", display: "flex", gap: 4, overflowX: "auto",
-        background: t.card, borderBottom: `1px solid ${t.cb}`
-      }}>
-        <span style={{ fontSize: 10, color: t.t3, flexShrink: 0, marginRight: 4, lineHeight: "24px" }}>요소:</span>
-        {els.map((el, i) => (
-          <span key={i} onClick={() => setSelIdx(i)}
-            style={{
-              fontSize: 10, padding: "4px 10px", cursor: "pointer", flexShrink: 0,
-              borderRadius: 4, lineHeight: "16px",
-              background: selIdx === i ? t.abg : "transparent",
-              color: selIdx === i ? t.ac : t.t3,
-              border: `1px solid ${selIdx === i ? t.ac : t.cb}`
-            }}>
-            &lt;{el.tag}&gt;{el.tc ? ` "${el.tc.slice(0, 8)}"` : ""}
-          </span>
-        ))}
-      </div>
-
-      {/* Code view (always visible at bottom) */}
-      <div style={{ padding: "6px 12px", borderBottom: `1px solid ${t.cb}`, fontSize: 11, color: t.t3, background: t.card }}>
-        생성된 코드
-      </div>
-      <div style={{ padding: 12, background: t.pv, maxHeight: 200, overflow: "auto" }}>
-        <pre style={{
-          margin: 0, fontFamily: "monospace", fontSize: 11, lineHeight: 1.7,
-          color: t.t2, whiteSpace: "pre-wrap", wordBreak: "break-all"
-        }}>
-          {code}
-        </pre>
+        {/* Panel C: Code View */}
+        <div style={{ width: 320, flexShrink: 0, display: "flex", flexDirection: "column", background: t.bg, minWidth: 0 }}>
+          <div style={{
+            display: "flex", alignItems: "center", padding: "6px 12px",
+            borderBottom: `1px solid ${t.cb}`, fontSize: 11, color: t.t3, flexShrink: 0
+          }}>
+            <span>C. 코드 뷰</span>
+            <div style={{ marginLeft: "auto", display: "flex", gap: 4 }}>
+              <button onClick={() => setCodeEditing(!codeEditing)}
+                style={{
+                  padding: "3px 8px", fontSize: 10, border: `1px solid ${t.cb}`,
+                  background: codeEditing ? t.abg : "transparent",
+                  color: codeEditing ? t.ac : t.t3, cursor: "pointer", borderRadius: 3
+                }}>
+                {codeEditing ? "미리보기" : "편집"}
+              </button>
+              <button onClick={handleCopy}
+                style={{
+                  padding: "3px 8px", fontSize: 10, border: `1px solid ${t.ac}`,
+                  background: t.abg, color: copied ? t.gn : t.ac,
+                  cursor: "pointer", borderRadius: 3
+                }}>
+                {copied ? "복사됨 ✓" : "코드 복사"}
+              </button>
+            </div>
+          </div>
+          <div style={{ flex: 1, overflow: "auto", position: "relative" }}>
+            {codeEditing ? (
+              <textarea value={formattedCode}
+                onChange={e => { setCode(e.target.value); setSelIdx(null); }}
+                style={{
+                  width: "100%", height: "100%", padding: 12, background: t.pv,
+                  border: "none", color: t.gn, fontFamily: "monospace",
+                  fontSize: 12, lineHeight: 1.7, resize: "none", outline: "none",
+                  boxSizing: "border-box"
+                }}
+                spellCheck={false}
+              />
+            ) : (
+              <pre
+                style={{
+                  margin: 0, padding: 12, fontFamily: "monospace", fontSize: 12,
+                  lineHeight: 1.7, color: t.t2, whiteSpace: "pre-wrap", wordBreak: "break-all",
+                  background: t.pv, minHeight: "100%", boxSizing: "border-box"
+                }}
+                dangerouslySetInnerHTML={{ __html: highlightedCode }}
+              />
+            )}
+          </div>
+          <div style={{ padding: "4px 12px", fontSize: 10, color: t.t3, borderTop: `1px solid ${t.cb}`, flexShrink: 0 }}>
+            속성 변경 시 코드 실시간 업데이트
+          </div>
+        </div>
       </div>
     </div>
   );
