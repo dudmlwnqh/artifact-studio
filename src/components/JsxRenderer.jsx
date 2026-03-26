@@ -1,46 +1,31 @@
 import { useState, useEffect, useRef } from "react";
 
-// HTML은 직접 렌더링, JSX는 iframe + React CDN으로 렌더링
+// HTML → dangerouslySetInnerHTML (가장 확실)
+// JSX → iframe + React CDN + Babel
 export default function JsxRenderer({ code, style }) {
+  const [iframeDoc, setIframeDoc] = useState("");
+  const [useIframe, setUseIframe] = useState(false);
   const iframeRef = useRef(null);
   const [height, setHeight] = useState(400);
 
-  const isJSX = code?.includes("function ") || code?.includes("const ") ||
-                code?.includes("useState") || code?.includes("export ") ||
-                code?.includes("import ") || code?.includes("=>");
-
-  // iframe 높이 자동 조절
   useEffect(() => {
-    const handler = (e) => {
-      if (e.data?.type === "iframe-height" && e.data.height) {
-        setHeight(Math.max(100, e.data.height + 20));
-      }
-    };
-    window.addEventListener("message", handler);
-    return () => window.removeEventListener("message", handler);
-  }, []);
+    if (!code?.trim()) return;
 
-  useEffect(() => {
-    if (!iframeRef.current || !code?.trim()) return;
+    const hasJSX = code.includes("function ") || code.includes("const ") ||
+                   code.includes("useState") || code.includes("export ") ||
+                   code.includes("import ");
 
-    if (!isJSX) {
-      // 순수 HTML → iframe에 직접 넣기
-      iframeRef.current.srcdoc = `<!DOCTYPE html><html><head><meta charset="utf-8">
-<style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:system-ui,-apple-system,sans-serif;background:#0c0c18;color:#fff}</style>
-</head><body>${code}</body>
-<script>
-new ResizeObserver(function(){window.parent.postMessage({type:"iframe-height",height:document.body.scrollHeight},"*")}).observe(document.body);
-setTimeout(function(){window.parent.postMessage({type:"iframe-height",height:document.body.scrollHeight},"*")},100);
-<\/script></html>`;
+    if (!hasJSX) {
+      setUseIframe(false);
       return;
     }
 
-    // JSX → import 제거 후 iframe + React CDN
+    // JSX 처리
+    setUseIframe(true);
     let processed = code
-      .replace(/^import\s+.*$/gm, "")
+      .replace(/^import\s+.*$/gm, "// (import removed)")
       .replace(/^export\s+default\s+/gm, "");
 
-    // 컴포넌트 이름 추출
     const funcMatches = [...processed.matchAll(/(?:function|const)\s+(\w+)/g)];
     const compName = funcMatches.length > 0 ? funcMatches[funcMatches.length - 1][1] : null;
     if (!compName) {
@@ -48,21 +33,34 @@ setTimeout(function(){window.parent.postMessage({type:"iframe-height",height:doc
     }
     const renderTarget = compName || "__App__";
 
-    iframeRef.current.srcdoc = `<!DOCTYPE html><html><head><meta charset="utf-8">
-<style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:system-ui,-apple-system,sans-serif;background:#0c0c18}</style>
+    setIframeDoc(`<!DOCTYPE html><html><head><meta charset="utf-8">
+<style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:system-ui,sans-serif;background:#0c0c18}</style>
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"><\/script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"><\/script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"><\/script>
 </head><body><div id="root"></div>
 <script type="text/babel">
-const {useState,useEffect,useRef,useCallback,useMemo,useContext,createContext,Fragment}=React;
+const {useState,useEffect,useRef,useCallback,useMemo}=React;
 ${processed}
 ReactDOM.createRoot(document.getElementById("root")).render(<${renderTarget}/>);
-new ResizeObserver(()=>window.parent.postMessage({type:"iframe-height",height:document.body.scrollHeight},"*")).observe(document.body);
-setTimeout(()=>window.parent.postMessage({type:"iframe-height",height:document.body.scrollHeight},"*"),500);
-<\/script></body></html>`;
+<\/script></body></html>`);
   }, [code]);
 
+  // iframe srcdoc 설정
+  useEffect(() => {
+    if (useIframe && iframeRef.current && iframeDoc) {
+      iframeRef.current.srcdoc = iframeDoc;
+    }
+  }, [iframeDoc, useIframe]);
+
+  // HTML은 dangerouslySetInnerHTML로 직접 렌더링 (iframe 없이)
+  if (!useIframe) {
+    return (
+      <div style={style} dangerouslySetInnerHTML={{ __html: code || "" }} />
+    );
+  }
+
+  // JSX는 iframe
   return (
     <div style={style}>
       <iframe
