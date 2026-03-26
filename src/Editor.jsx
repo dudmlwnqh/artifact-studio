@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import PageViewer from "./components/PageViewer.jsx";
+import StoryboardPanel from "./components/StoryboardPanel.jsx";
 
 // Slider - MUST be outside Editor to prevent remount on every render
 function Slider({ label, value, onChange, min = 0, max = 100, step = 1, unit = "px", t }) {
@@ -103,7 +104,7 @@ export default function Editor({ project, onBack, onSave, t }) {
   const [selIdx, setSelIdx] = useState(null);
   const [els, setEls] = useState([]);
   const [copied, setCopied] = useState(false);
-  const [rightTab, setRightTab] = useState("style"); // "style" | "interaction"
+  const [rightTab, setRightTab] = useState("storyboard"); // "storyboard" | "style" | "interaction"
   const [interactions, setInteractions] = useState(project.interactions || []);
   const [newTrigger, setNewTrigger] = useState("tap");
   const [newAction, setNewAction] = useState("toast");
@@ -832,15 +833,15 @@ export default function Editor({ project, onBack, onSave, t }) {
           )}
         </div>
 
-        {/* Panel B: Properties / Interaction (only in preview + edit mode) */}
-        {viewMode === "preview" && !interactionMode && (
-        <div style={{ width: 240, flexShrink: 0, display: "flex", flexDirection: "column", background: t.card }}>
+        {/* Right Panel: Storyboard + Properties */}
+        {viewMode === "preview" && (
+        <div style={{ width: 280, flexShrink: 0, display: "flex", flexDirection: "column", background: t.card, borderLeft: `1px solid ${t.cb}` }}>
           {/* Tab switcher */}
           <div style={{ display: "flex", borderBottom: `1px solid ${t.cb}`, flexShrink: 0 }}>
-            {[["style", "속성 편집"], ["interaction", "인터랙션"]].map(([k, label]) => (
+            {[["storyboard", "스토리보드"], ...(interactionMode ? [] : [["style", "속성 편집"], ["interaction", "인터랙션"]])].map(([k, label]) => (
               <button key={k} onClick={() => setRightTab(k)}
                 style={{
-                  flex: 1, padding: "6px 0", fontSize: 11, border: "none", cursor: "pointer",
+                  flex: 1, padding: "6px 0", fontSize: 10, border: "none", cursor: "pointer",
                   background: rightTab === k ? t.abg : "transparent",
                   color: rightTab === k ? t.ac : t.t3,
                   borderBottom: rightTab === k ? `2px solid ${t.ac}` : "2px solid transparent",
@@ -849,6 +850,10 @@ export default function Editor({ project, onBack, onSave, t }) {
             ))}
           </div>
 
+          {/* Storyboard tab */}
+          {rightTab === "storyboard" && (
+            <StoryboardPanel project={project} onUpdateProject={onSave} t={t} />
+          )}
           {/* Style tab */}
           {rightTab === "style" && (
             !sel ? (
