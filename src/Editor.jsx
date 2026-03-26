@@ -459,27 +459,32 @@ export default function Editor({ project, onBack, onSave, t }) {
     }
   });
 
-  // Resize handle drag
+  // Resize handle drag - 좌우는 동시 조절, padding 축약형으로 한번에 세팅
   useEffect(() => {
     if (!resizing) return;
     const handleMove = (e) => {
       const dx = e.clientX - resizing.startX;
       const dy = e.clientY - resizing.startY;
       const h = resizing.handle;
-      const s = resizing.startStyle;
+      const s = { ...resizing.startStyle };
 
-      if (h === "t" || h === "tl" || h === "tr") {
-        updateStyle("paddingTop", Math.max(0, s.pt - dy) + "px");
+      let newPt = s.pt, newPr = s.pr, newPb = s.pb, newPl = s.pl;
+
+      // 상 조절
+      if (h === "t" || h === "tl" || h === "tr") newPt = Math.max(0, s.pt - dy);
+      // 하 조절
+      if (h === "b" || h === "bl" || h === "br") newPb = Math.max(0, s.pb + dy);
+      // 좌우 동시 조절 (좌 핸들이든 우 핸들이든 좌우 대칭)
+      if (h === "l" || h === "bl" || h === "tl") {
+        const v = Math.max(0, s.pl - dx);
+        newPl = v; newPr = v;
       }
-      if (h === "b" || h === "bl" || h === "br") {
-        updateStyle("paddingBottom", Math.max(0, s.pb + dy) + "px");
+      if (h === "r" || h === "br" || h === "tr") {
+        const v = Math.max(0, s.pr + dx);
+        newPl = v; newPr = v;
       }
-      if (h === "l" || h === "tl" || h === "bl") {
-        updateStyle("paddingLeft", Math.max(0, s.pl - dx) + "px");
-      }
-      if (h === "r" || h === "tr" || h === "br") {
-        updateStyle("paddingRight", Math.max(0, s.pr + dx) + "px");
-      }
+
+      updateStyle("padding", `${Math.round(newPt)}px ${Math.round(newPr)}px ${Math.round(newPb)}px ${Math.round(newPl)}px`);
     };
     const handleUp = () => setResizing(null);
     document.addEventListener("mousemove", handleMove);
