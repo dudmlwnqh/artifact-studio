@@ -97,17 +97,30 @@ export default function PageViewer({ project, onUpdateProject, t, onEditPage }) 
                 alignItems: "center", justifyContent: "center",
                 padding: 0, cursor: "default", position: "relative"
               }}>
-                {/* Rendered artifact - centered, natural size */}
-                <div
-                  onDoubleClick={(e) => { e.stopPropagation(); if (onEditPage && current) onEditPage(current); }}
-                  dangerouslySetInnerHTML={{ __html: current?.code || "" }}
-                  style={{
-                    maxWidth: "90%", minWidth: 280,
-                    userSelect: "none", WebkitUserSelect: "none",
-                    borderRadius: 8,
-                    boxShadow: "0 8px 32px rgba(0,0,0,0.3)"
-                  }}
-                />
+                {/* Rendered page - mobile frame, full app screen */}
+                <div style={{
+                  width: 375, minHeight: 667, maxHeight: "85vh",
+                  background: "#0c0c18", borderRadius: 16, overflow: "auto",
+                  boxShadow: "0 8px 40px rgba(0,0,0,0.5)",
+                  border: "1px solid rgba(255,255,255,0.06)",
+                  position: "relative", flexShrink: 0
+                }}>
+                  <div
+                    dangerouslySetInnerHTML={{ __html: current?.code || "" }}
+                    style={{ userSelect: "none", WebkitUserSelect: "none", minHeight: "100%" }}
+                  />
+                  {/* Edit button floating */}
+                  <div onClick={(e) => { e.stopPropagation(); if (onEditPage && current) onEditPage(current); }}
+                    style={{
+                      position: "absolute", bottom: 12, right: 12,
+                      padding: "6px 14px", borderRadius: 20,
+                      background: t.ac, color: "#fff", fontSize: 11, fontWeight: 600,
+                      cursor: "pointer", boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
+                      opacity: 0.85, zIndex: 3
+                    }}>
+                    ✏ 편집
+                  </div>
+                </div>
 
                 {/* ◀ ▶ arrows - only on hover area */}
                 {pages.length > 1 && pageIdx > 0 && (
