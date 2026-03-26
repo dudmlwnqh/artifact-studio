@@ -68,7 +68,36 @@ export default function Editor({ project, onBack, onSave, t }) {
   const [bottomSheet, setBottomSheet] = useState(null);
   const [modal, setModal] = useState(null);
   const [codeEditing, setCodeEditing] = useState(false);
+  const [eyedropper, setEyedropper] = useState(null); // null | "color" | "background"
   const previewRef = useRef(null);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handler = (e) => {
+      if (e.ctrlKey && e.key === "i") {
+        e.preventDefault();
+        if (eyedropper) {
+          setEyedropper(null);
+        } else if (selIdx !== null) {
+          setEyedropper("color"); // default to text color
+        }
+      }
+      if (e.key === "Escape") {
+        setEyedropper(null);
+      }
+      // Ctrl+S = save
+      if (e.ctrlKey && e.key === "s") {
+        e.preventDefault();
+        handleSave();
+      }
+      // Ctrl+C with no text selection = copy code
+      if (e.ctrlKey && e.key === "c" && !window.getSelection()?.toString()) {
+        // don't override normal copy
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [eyedropper, selIdx]);
 
   // Syntax highlight colors
   const hlColors = {
@@ -220,10 +249,26 @@ export default function Editor({ project, onBack, onSave, t }) {
     return found;
   };
 
-  // Click on preview to select element + fire tap interactions
+  // Click on preview to select element + fire tap interactions + eyedropper
   const handlePreviewClick = (e) => {
     const found = findElIdx(e.target);
     if (found >= 0 && found < els.length) {
+      // Eyedropper mode: pick color from clicked element
+      if (eyedropper && selIdx !== null) {
+        const clickedStyle = window.getComputedStyle(e.target);
+        const pickedColor = eyedropper === "background"
+          ? clickedStyle.backgroundColor
+          : clickedStyle.color;
+        // Convert rgb to hex
+        const toHex = (rgb) => {
+          const m = rgb.match(/\d+/g);
+          if (!m || m.length < 3) return rgb;
+          return "#" + m.slice(0, 3).map(x => parseInt(x).toString(16).padStart(2, "0")).join("");
+        };
+        updateStyle(eyedropper, toHex(pickedColor));
+        setEyedropper(null);
+        return;
+      }
       setSelIdx(found);
       interactions.filter(i => i.elIdx === found && i.trigger === "tap")
         .forEach(i => fireAction(i.action, i.message));
@@ -252,43 +297,42 @@ export default function Editor({ project, onBack, onSave, t }) {
 
   const sel = selIdx !== null ? els[selIdx] : null;
 
-  // Slider component
+  // Slider component - stopPropagation to prevent preview mouseDown hijacking drag
   const Slider = ({ label, value, onChange, min = 0, max = 100, step = 1, unit = "px" }) => (
-    <div style={{ marginBottom: 10 }}>
-      <div style={{ fontSize: 11, color: t.t3, marginBottom: 4 }}>{label}</div>
-      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+    <div style={{ marginBottom: 8 }}>
+      <div style={{ fontSize: 10, color: t.t3, marginBottom: 2 }}>{label}</div>
+      <div style={{ display: "flex", alignItems: "center", gap: 4 }}
+        onMouseDown={e => e.stopPropagation()} onTouchStart={e => e.stopPropagation()}>
         <input type="range" min={min} max={max} step={step} value={value}
           onChange={e => onChange(e.target.value)}
           style={{ flex: 1, height: 4, accentColor: t.ac }} />
         <input value={value} onChange={e => onChange(e.target.value)}
           style={{
-            width: 44, padding: "4px 6px", background: t.ib,
+            width: 40, padding: "3px 4px", background: t.ib,
             border: `1px solid ${t.ibr}`, borderRadius: 4,
-            fontSize: 11, color: t.tx, fontFamily: "monospace",
+            fontSize: 10, color: t.tx, fontFamily: "monospace",
             textAlign: "right", outline: "none"
           }} />
-        {unit && <span style={{ fontSize: 10, color: t.t3, width: 18 }}>{unit}</span>}
+        {unit && <span style={{ fontSize: 9, color: t.t3, width: 16 }}>{unit}</span>}
       </div>
     </div>
   );
 
-  // Color input
-  const ColorField = ({ label, propKey }) => {
+  // Compact color input (used inline)
+  const ColorInput = ({ propKey }) => {
     const val = sel?.so[propKey] || "";
     const hex = val.startsWith("#") ? val : "#000000";
     return (
-      <div style={{ marginBottom: 10 }}>
-        <div style={{ fontSize: 11, color: t.t3, marginBottom: 4 }}>{label}</div>
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <input type="color" value={hex} onChange={e => updateStyle(propKey, e.target.value)}
-            style={{ width: 28, height: 28, border: `1px solid ${t.ibr}`, borderRadius: 4, padding: 0, cursor: "pointer" }} />
-          <input value={val} onChange={e => updateStyle(propKey, e.target.value)}
-            style={{
-              flex: 1, padding: "4px 8px", background: t.ib,
-              border: `1px solid ${t.ibr}`, borderRadius: 4,
-              fontSize: 11, color: t.tx, fontFamily: "monospace", outline: "none"
-            }} />
-        </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 4, flex: 1 }}
+        onMouseDown={e => e.stopPropagation()}>
+        <input type="color" value={hex} onChange={e => updateStyle(propKey, e.target.value)}
+          style={{ width: 24, height: 24, border: `1px solid ${t.ibr}`, borderRadius: 4, padding: 0, cursor: "pointer", flexShrink: 0 }} />
+        <input value={val} onChange={e => updateStyle(propKey, e.target.value)}
+          style={{
+            flex: 1, minWidth: 0, padding: "3px 6px", background: t.ib,
+            border: `1px solid ${t.ibr}`, borderRadius: 4,
+            fontSize: 10, color: t.tx, fontFamily: "monospace", outline: "none"
+          }} />
       </div>
     );
   };
@@ -347,7 +391,7 @@ export default function Editor({ project, onBack, onSave, t }) {
             <div ref={previewRef} onClick={handlePreviewClick}
               onMouseDown={handlePreviewMouseDown} onMouseUp={handlePreviewMouseUp}
               dangerouslySetInnerHTML={{ __html: code }}
-              style={{ maxWidth: "100%", cursor: "crosshair" }} />
+              style={{ maxWidth: "100%", cursor: eyedropper ? "cell" : "crosshair" }} />
 
             {/* Toast overlay */}
             {toast && (
@@ -432,26 +476,79 @@ export default function Editor({ project, onBack, onSave, t }) {
                   {sel.tc && <span style={{ fontWeight: 400, color: t.t3, marginLeft: 4 }}>"{sel.tc.slice(0, 12)}"</span>}
                 </div>
 
-                {/* Font size */}
-                <Slider label="글자 크기" value={(sel.so.fontSize || "14").replace("px", "")}
-                  onChange={v => updateStyle("fontSize", v)} min={8} max={72} />
-
-                {/* Font weight */}
-                <div style={{ marginBottom: 10 }}>
-                  <div style={{ fontSize: 11, color: t.t3, marginBottom: 4 }}>글자 굵기</div>
-                  <select value={sel.so.fontWeight || "400"}
-                    onChange={e => updateStyle("fontWeight", e.target.value)}
-                    style={{
-                      width: "100%", padding: "6px 8px", background: t.ib,
-                      border: `1px solid ${t.ibr}`, borderRadius: 4,
-                      fontSize: 12, color: t.tx, outline: "none"
-                    }}>
-                    {["300", "400", "500", "600", "700"].map(w => <option key={w} value={w}>{w}</option>)}
-                  </select>
+                {/* 글자 크기 + 굵기 (같은 행) */}
+                <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 10, color: t.t3, marginBottom: 2 }}>크기</div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 4 }}
+                      onMouseDown={e => e.stopPropagation()}>
+                      <input type="range" min={8} max={72} value={(sel.so.fontSize || "14").replace("px", "")}
+                        onChange={e => updateStyle("fontSize", e.target.value)}
+                        style={{ flex: 1, height: 4, accentColor: t.ac }} />
+                      <input value={(sel.so.fontSize || "14").replace("px", "")}
+                        onChange={e => updateStyle("fontSize", e.target.value)}
+                        style={{
+                          width: 32, padding: "3px 4px", background: t.ib,
+                          border: `1px solid ${t.ibr}`, borderRadius: 4,
+                          fontSize: 10, color: t.tx, fontFamily: "monospace",
+                          textAlign: "right", outline: "none"
+                        }} />
+                    </div>
+                  </div>
+                  <div style={{ width: 60, flexShrink: 0 }}>
+                    <div style={{ fontSize: 10, color: t.t3, marginBottom: 2 }}>굵기</div>
+                    <select value={sel.so.fontWeight || "400"}
+                      onChange={e => updateStyle("fontWeight", e.target.value)}
+                      onMouseDown={e => e.stopPropagation()}
+                      style={{
+                        width: "100%", padding: "4px 2px", background: t.ib,
+                        border: `1px solid ${t.ibr}`, borderRadius: 4,
+                        fontSize: 10, color: t.tx, outline: "none"
+                      }}>
+                      {["300", "400", "500", "600", "700"].map(w => <option key={w} value={w}>{w}</option>)}
+                    </select>
+                  </div>
                 </div>
 
-                <ColorField label="글자색" propKey="color" />
-                <ColorField label="배경색" propKey="background" />
+                {/* 글자색 + 배경색 (같은 행) + 스포이드 */}
+                <div style={{ marginBottom: 8 }}>
+                  <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 10, color: t.t3, marginBottom: 2 }}>글자색</div>
+                      <ColorInput propKey="color" />
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 10, color: t.t3, marginBottom: 2 }}>배경색</div>
+                      <ColorInput propKey="background" />
+                    </div>
+                  </div>
+                  {/* 스포이드 버튼 */}
+                  <div style={{ display: "flex", gap: 4, marginTop: 4 }}>
+                    <button onClick={() => setEyedropper(eyedropper === "color" ? null : "color")}
+                      style={{
+                        flex: 1, padding: "4px 0", fontSize: 9, border: `1px solid ${t.ibr}`,
+                        background: eyedropper === "color" ? t.ac : "transparent",
+                        color: eyedropper === "color" ? "#fff" : t.t3,
+                        cursor: "pointer", borderRadius: 3
+                      }}>
+                      🔍 글자색 스포이드
+                    </button>
+                    <button onClick={() => setEyedropper(eyedropper === "background" ? null : "background")}
+                      style={{
+                        flex: 1, padding: "4px 0", fontSize: 9, border: `1px solid ${t.ibr}`,
+                        background: eyedropper === "background" ? t.ac : "transparent",
+                        color: eyedropper === "background" ? "#fff" : t.t3,
+                        cursor: "pointer", borderRadius: 3
+                      }}>
+                      🔍 배경색 스포이드
+                    </button>
+                  </div>
+                  {eyedropper && (
+                    <div style={{ marginTop: 4, padding: "4px 8px", background: t.ac, borderRadius: 4, fontSize: 10, color: "#fff", textAlign: "center" }}>
+                      스포이드 모드: 미리보기에서 원하는 요소 클릭 (Esc 취소)
+                    </div>
+                  )}
+                </div>
 
                 {/* Text align */}
                 <div style={{ marginBottom: 10 }}>
@@ -587,17 +684,18 @@ export default function Editor({ project, onBack, onSave, t }) {
                   <Slider label="두께" value={parseInt(sel.so.borderWidth || "0")}
                     onChange={v => updateStyle("borderWidth", v + "px")} min={0} max={10} />
                   <div style={{ marginBottom: 6 }}>
-                    <div style={{ fontSize: 11, color: t.t3, marginBottom: 4 }}>색상</div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <div style={{ fontSize: 10, color: t.t3, marginBottom: 2 }}>색상</div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 4 }}
+                      onMouseDown={e => e.stopPropagation()}>
                       <input type="color" value={(sel.so.borderColor || "#000000").startsWith("#") ? sel.so.borderColor : "#000000"}
                         onChange={e => updateStyle("borderColor", e.target.value)}
-                        style={{ width: 28, height: 28, border: `1px solid ${t.ibr}`, borderRadius: 4, padding: 0, cursor: "pointer" }} />
+                        style={{ width: 24, height: 24, border: `1px solid ${t.ibr}`, borderRadius: 4, padding: 0, cursor: "pointer" }} />
                       <input value={sel.so.borderColor || ""}
                         onChange={e => updateStyle("borderColor", e.target.value)}
                         style={{
-                          flex: 1, padding: "4px 8px", background: t.ib,
+                          flex: 1, padding: "3px 6px", background: t.ib,
                           border: `1px solid ${t.ibr}`, borderRadius: 4,
-                          fontSize: 11, color: t.tx, fontFamily: "monospace", outline: "none"
+                          fontSize: 10, color: t.tx, fontFamily: "monospace", outline: "none"
                         }} />
                     </div>
                   </div>
