@@ -67,8 +67,10 @@ export default function Editor({ project, onBack, onSave, t }) {
   const [toast, setToast] = useState(null);
   const [bottomSheet, setBottomSheet] = useState(null);
   const [modal, setModal] = useState(null);
-  const [codeEditing, setCodeEditing] = useState(false);
   const [eyedropper, setEyedropper] = useState(null); // null | "color" | "background"
+  const [viewMode, setViewMode] = useState("preview"); // "preview" | "code"
+  const [interactionMode, setInteractionMode] = useState(false); // true = 실행 모드
+  const [editingText, setEditingText] = useState(null); // { idx, text }
   const previewRef = useRef(null);
 
   // Keyboard shortcuts
@@ -134,7 +136,7 @@ export default function Editor({ project, onBack, onSave, t }) {
     }
   }, [code]);
 
-  // Rebuild HTML from modified elements
+  // Rebuild HTML from modified elements (style + text)
   const rebuild = useCallback((newEls) => {
     try {
       const tmp = document.createElement("div");
@@ -144,6 +146,13 @@ export default function Editor({ project, onBack, onSave, t }) {
         if (node.nodeType === 1) {
           if (i < newEls.length) {
             node.setAttribute("style", styleToStr(newEls[i].so));
+            // Update text content if changed
+            if (newEls[i].tc !== undefined) {
+              const childNodes = Array.from(node.childNodes);
+              if (childNodes.length === 1 && childNodes[0].nodeType === 3) {
+                childNodes[0].textContent = newEls[i].tc || "";
+              }
+            }
           }
           i++;
           Array.from(node.children).forEach(walk);
@@ -155,6 +164,13 @@ export default function Editor({ project, onBack, onSave, t }) {
       return code;
     }
   }, [code]);
+
+  // Update text content of element
+  const updateText = (idx, text) => {
+    const newEls = els.map((el, i) => i === idx ? { ...el, tc: text } : el);
+    setEls(newEls);
+    setCode(rebuild(newEls));
+  };
 
   // Update a style property
   const updateStyle = (key, value) => {
@@ -218,7 +234,7 @@ export default function Editor({ project, onBack, onSave, t }) {
   const longPressTimer = useRef(null);
 
   const handlePreviewMouseDown = (e) => {
-    if (!previewRef.current) return;
+    if (!previewRef.current || !interactionMode) return;
     const idx = findElIdx(e.target);
     if (idx < 0) return;
     longPressTimer.current = setTimeout(() => {
@@ -253,13 +269,12 @@ export default function Editor({ project, onBack, onSave, t }) {
   const handlePreviewClick = (e) => {
     const found = findElIdx(e.target);
     if (found >= 0 && found < els.length) {
-      // Eyedropper mode: pick color from clicked element
+      // Eyedropper mode
       if (eyedropper && selIdx !== null) {
         const clickedStyle = window.getComputedStyle(e.target);
         const pickedColor = eyedropper === "background"
           ? clickedStyle.backgroundColor
           : clickedStyle.color;
-        // Convert rgb to hex
         const toHex = (rgb) => {
           const m = rgb.match(/\d+/g);
           if (!m || m.length < 3) return rgb;
@@ -269,9 +284,23 @@ export default function Editor({ project, onBack, onSave, t }) {
         setEyedropper(null);
         return;
       }
+      // Interaction run mode: fire interactions instead of selecting
+      if (interactionMode) {
+        interactions.filter(i => i.elIdx === found && i.trigger === "tap")
+          .forEach(i => fireAction(i.action, i.message));
+        return;
+      }
       setSelIdx(found);
-      interactions.filter(i => i.elIdx === found && i.trigger === "tap")
-        .forEach(i => fireAction(i.action, i.message));
+    }
+  };
+
+  // Double-click to edit text
+  const handlePreviewDblClick = (e) => {
+    if (interactionMode) return;
+    const found = findElIdx(e.target);
+    if (found >= 0 && found < els.length && els[found].tc !== null) {
+      setSelIdx(found);
+      setEditingText({ idx: found, text: els[found].tc });
     }
   };
 
@@ -341,110 +370,211 @@ export default function Editor({ project, onBack, onSave, t }) {
     <div style={{ background: t.bg, color: t.tx, fontFamily: "system-ui, sans-serif", height: "100vh", display: "flex", flexDirection: "column" }}>
       {/* Header */}
       <div style={{
-        display: "flex", alignItems: "center", gap: 8, padding: "10px 14px",
+        display: "flex", alignItems: "center", gap: 8, padding: "8px 14px",
         borderBottom: `1px solid ${t.cb}`, background: t.bg, zIndex: 10, flexShrink: 0
       }}>
         <span onClick={onBack} style={{ cursor: "pointer", color: t.t3, fontSize: 18, padding: "0 4px" }}>←</span>
         <b style={{ fontSize: 15 }}>{project.name}</b>
+
+        {/* View mode toggle: 미리보기 / 코드 */}
+        <div style={{ display: "flex", border: `1px solid ${t.cb}`, borderRadius: 4, overflow: "hidden", marginLeft: 12 }}>
+          {[["preview", "미리보기"], ["code", "코드"]].map(([k, label]) => (
+            <button key={k} onClick={() => setViewMode(k)}
+              style={{
+                padding: "4px 14px", fontSize: 11, border: "none", cursor: "pointer",
+                background: viewMode === k ? t.abg : "transparent",
+                color: viewMode === k ? t.ac : t.t3,
+                fontWeight: viewMode === k ? 600 : 400
+              }}>{label}</button>
+          ))}
+        </div>
+
+        {/* Interaction mode toggle */}
+        {viewMode === "preview" && (
+          <button onClick={() => setInteractionMode(!interactionMode)}
+            style={{
+              padding: "4px 12px", fontSize: 11, borderRadius: 4, cursor: "pointer",
+              border: `1px solid ${interactionMode ? t.gn : t.cb}`,
+              background: interactionMode ? "rgba(93,202,165,0.15)" : "transparent",
+              color: interactionMode ? t.gn : t.t3,
+              fontWeight: interactionMode ? 600 : 400
+            }}>
+            {interactionMode ? "▶ 실행 모드" : "✏ 편집 모드"}
+          </button>
+        )}
+
         <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
+          <button onClick={handleCopy}
+            style={{ padding: "4px 10px", fontSize: 11, border: `1px solid ${t.ac}`, background: t.abg, color: copied ? t.gn : t.ac, cursor: "pointer", borderRadius: 4 }}>
+            {copied ? "복사됨 ✓" : "코드 복사"}
+          </button>
           <button onClick={handleSave}
-            style={{ padding: "5px 12px", fontSize: 11, border: `1px solid ${t.gn}`, background: "transparent", color: t.gn, cursor: "pointer", borderRadius: 4, fontWeight: 600 }}>
+            style={{ padding: "4px 10px", fontSize: 11, border: `1px solid ${t.gn}`, background: "transparent", color: t.gn, cursor: "pointer", borderRadius: 4, fontWeight: 600 }}>
             저장
           </button>
         </div>
       </div>
 
-      {/* Element bar */}
-      <div style={{
-        padding: "6px 14px", display: "flex", gap: 4, overflowX: "auto",
-        background: t.card, borderBottom: `1px solid ${t.cb}`, flexShrink: 0
-      }}>
-        <span style={{ fontSize: 10, color: t.t3, flexShrink: 0, marginRight: 4, lineHeight: "24px" }}>요소:</span>
-        {els.map((el, i) => (
-          <span key={i} onClick={() => setSelIdx(i)}
-            style={{
-              fontSize: 10, padding: "4px 10px", cursor: "pointer", flexShrink: 0,
-              borderRadius: 4, lineHeight: "16px",
-              background: selIdx === i ? t.abg : "transparent",
-              color: selIdx === i ? t.ac : t.t3,
-              border: `1px solid ${selIdx === i ? t.ac : t.cb}`
-            }}>
-            {"<" + el.tag + ">"}{el.tc ? ` "${el.tc.slice(0, 8)}"` : ""}
-          </span>
-        ))}
-      </div>
+      {/* Element bar (only in preview mode) */}
+      {viewMode === "preview" && !interactionMode && (
+        <div style={{
+          padding: "6px 14px", display: "flex", gap: 4, overflowX: "auto",
+          background: t.card, borderBottom: `1px solid ${t.cb}`, flexShrink: 0
+        }}>
+          <span style={{ fontSize: 10, color: t.t3, flexShrink: 0, marginRight: 4, lineHeight: "24px" }}>요소:</span>
+          {els.map((el, i) => (
+            <span key={i} onClick={() => setSelIdx(i)}
+              style={{
+                fontSize: 10, padding: "4px 10px", cursor: "pointer", flexShrink: 0,
+                borderRadius: 4, lineHeight: "16px",
+                background: selIdx === i ? t.abg : "transparent",
+                color: selIdx === i ? t.ac : t.t3,
+                border: `1px solid ${selIdx === i ? t.ac : t.cb}`
+              }}>
+              {"<" + el.tag + ">"}{el.tc ? ` "${el.tc.slice(0, 8)}"` : ""}
+            </span>
+          ))}
+        </div>
+      )}
 
-      {/* 3-panel main area */}
+      {/* Main area */}
       <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
 
-        {/* Panel A: Preview */}
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", borderRight: `1px solid ${t.cb}`, minWidth: 0 }}>
-          <div style={{ padding: "6px 12px", borderBottom: `1px solid ${t.cb}`, fontSize: 11, color: t.t3, flexShrink: 0 }}>
-            A. 라이브 미리보기
-            {sel && <span style={{ marginLeft: 8, color: t.ac, fontWeight: 500 }}>{"<" + sel.tag + ">"} 선택됨</span>}
-          </div>
-          <div style={{
-            flex: 1, padding: 24, background: t.pv,
-            display: "flex", alignItems: "center", justifyContent: "center",
-            position: "relative", overflow: "auto"
-          }}>
-            <div ref={previewRef} onClick={handlePreviewClick}
-              onMouseDown={handlePreviewMouseDown} onMouseUp={handlePreviewMouseUp}
-              dangerouslySetInnerHTML={{ __html: code }}
-              style={{ maxWidth: "100%", cursor: eyedropper ? "cell" : "crosshair" }} />
-
-            {/* Toast overlay */}
-            {toast && (
+        {/* Left: Preview or Code */}
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", borderRight: viewMode === "preview" ? `1px solid ${t.cb}` : "none", minWidth: 0 }}>
+          {viewMode === "preview" ? (
+            <>
               <div style={{
-                position: "absolute", bottom: 20, left: "50%", transform: "translateX(-50%)",
-                padding: "10px 20px", background: "#333", color: "#fff", borderRadius: 8,
-                fontSize: 13, boxShadow: "0 4px 12px rgba(0,0,0,0.3)", zIndex: 20
-              }}>{toast}</div>
-            )}
-
-            {/* Bottom Sheet overlay */}
-            {bottomSheet && (
-              <div style={{
-                position: "absolute", bottom: 0, left: 0, right: 0,
-                background: t.card, borderTop: `1px solid ${t.cb}`,
-                borderRadius: "12px 12px 0 0", padding: "16px 20px", zIndex: 20,
-                boxShadow: "0 -4px 20px rgba(0,0,0,0.3)"
+                flex: 1, padding: 24, background: t.pv,
+                display: "flex", alignItems: "center", justifyContent: "center",
+                position: "relative", overflow: "auto"
               }}>
-                <div style={{ width: 40, height: 4, background: t.cb, borderRadius: 2, margin: "0 auto 12px" }} />
-                <div style={{ fontSize: 14, marginBottom: 12 }}>{bottomSheet}</div>
-                <button onClick={() => setBottomSheet(null)}
-                  style={{ padding: "8px 16px", background: t.ac, color: "#fff", border: "none", borderRadius: 6, fontSize: 12, cursor: "pointer" }}>
-                  닫기
-                </button>
-              </div>
-            )}
+                <div ref={previewRef} onClick={handlePreviewClick}
+                  onDoubleClick={handlePreviewDblClick}
+                  onMouseDown={handlePreviewMouseDown} onMouseUp={handlePreviewMouseUp}
+                  dangerouslySetInnerHTML={{ __html: code }}
+                  style={{ maxWidth: "100%", cursor: interactionMode ? "pointer" : (eyedropper ? "cell" : "crosshair") }} />
 
-            {/* Modal overlay */}
-            {modal && (
-              <div onClick={() => setModal(null)} style={{
-                position: "absolute", inset: 0, background: "rgba(0,0,0,0.5)",
-                display: "flex", alignItems: "center", justifyContent: "center", zIndex: 20
-              }}>
-                <div onClick={e => e.stopPropagation()} style={{
-                  background: t.card, borderRadius: 12, padding: 24, minWidth: 200,
-                  border: `1px solid ${t.cb}`, textAlign: "center"
-                }}>
-                  <div style={{ fontSize: 14, marginBottom: 16 }}>{modal}</div>
-                  <button onClick={() => setModal(null)}
-                    style={{ padding: "8px 20px", background: t.ac, color: "#fff", border: "none", borderRadius: 6, fontSize: 12, cursor: "pointer" }}>
-                    확인
-                  </button>
-                </div>
+                {/* Text editing overlay */}
+                {editingText && (
+                  <div style={{
+                    position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)",
+                    display: "flex", alignItems: "center", justifyContent: "center", zIndex: 30
+                  }} onClick={() => {
+                    updateText(editingText.idx, editingText.text);
+                    setEditingText(null);
+                  }}>
+                    <div onClick={e => e.stopPropagation()} style={{
+                      background: t.card, borderRadius: 8, padding: 16,
+                      border: `1px solid ${t.cb}`, minWidth: 300
+                    }}>
+                      <div style={{ fontSize: 12, color: t.ac, marginBottom: 8, fontWeight: 600 }}>
+                        텍스트 편집 {"<" + (els[editingText.idx]?.tag || "") + ">"}
+                      </div>
+                      <input value={editingText.text}
+                        autoFocus
+                        onChange={e => setEditingText({ ...editingText, text: e.target.value })}
+                        onKeyDown={e => {
+                          if (e.key === "Enter") {
+                            updateText(editingText.idx, editingText.text);
+                            setEditingText(null);
+                          }
+                          if (e.key === "Escape") setEditingText(null);
+                        }}
+                        style={{
+                          width: "100%", padding: "8px 10px", background: t.ib,
+                          border: `1px solid ${t.ibr}`, borderRadius: 6,
+                          fontSize: 14, color: t.tx, outline: "none", boxSizing: "border-box"
+                        }} />
+                      <div style={{ fontSize: 10, color: t.t3, marginTop: 6 }}>Enter로 확인, Esc로 취소</div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Toast overlay */}
+                {toast && (
+                  <div style={{
+                    position: "absolute", bottom: 20, left: "50%", transform: "translateX(-50%)",
+                    padding: "10px 20px", background: "#333", color: "#fff", borderRadius: 8,
+                    fontSize: 13, boxShadow: "0 4px 12px rgba(0,0,0,0.3)", zIndex: 20
+                  }}>{toast}</div>
+                )}
+
+                {/* Bottom Sheet overlay */}
+                {bottomSheet && (
+                  <div style={{
+                    position: "absolute", bottom: 0, left: 0, right: 0,
+                    background: t.card, borderTop: `1px solid ${t.cb}`,
+                    borderRadius: "12px 12px 0 0", padding: "16px 20px", zIndex: 20,
+                    boxShadow: "0 -4px 20px rgba(0,0,0,0.3)"
+                  }}>
+                    <div style={{ width: 40, height: 4, background: t.cb, borderRadius: 2, margin: "0 auto 12px" }} />
+                    <div style={{ fontSize: 14, marginBottom: 12 }}>{bottomSheet}</div>
+                    <button onClick={() => setBottomSheet(null)}
+                      style={{ padding: "8px 16px", background: t.ac, color: "#fff", border: "none", borderRadius: 6, fontSize: 12, cursor: "pointer" }}>
+                      닫기
+                    </button>
+                  </div>
+                )}
+
+                {/* Modal overlay */}
+                {modal && (
+                  <div onClick={() => setModal(null)} style={{
+                    position: "absolute", inset: 0, background: "rgba(0,0,0,0.5)",
+                    display: "flex", alignItems: "center", justifyContent: "center", zIndex: 20
+                  }}>
+                    <div onClick={e => e.stopPropagation()} style={{
+                      background: t.card, borderRadius: 12, padding: 24, minWidth: 200,
+                      border: `1px solid ${t.cb}`, textAlign: "center"
+                    }}>
+                      <div style={{ fontSize: 14, marginBottom: 16 }}>{modal}</div>
+                      <button onClick={() => setModal(null)}
+                        style={{ padding: "8px 20px", background: t.ac, color: "#fff", border: "none", borderRadius: 6, fontSize: 12, cursor: "pointer" }}>
+                        확인
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Interaction mode indicator */}
+                {interactionMode && (
+                  <div style={{
+                    position: "absolute", top: 8, left: "50%", transform: "translateX(-50%)",
+                    padding: "4px 12px", background: t.gn, color: "#fff", borderRadius: 4,
+                    fontSize: 11, fontWeight: 600, zIndex: 10
+                  }}>
+                    실행 모드 - 인터랙션 테스트 중
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-          <div style={{ padding: "4px 12px", fontSize: 10, color: t.t3, borderTop: `1px solid ${t.cb}`, flexShrink: 0 }}>
-            렌더링된 결과물. 요소를 클릭하면 선택됨.
-          </div>
+              <div style={{ padding: "4px 12px", fontSize: 10, color: t.t3, borderTop: `1px solid ${t.cb}`, flexShrink: 0 }}>
+                {interactionMode ? "요소를 클릭/롱프레스하면 등록된 인터랙션이 실행됩니다" : "클릭=선택, 더블클릭=텍스트 편집"}
+              </div>
+            </>
+          ) : (
+            /* Code view mode */
+            <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+              <textarea value={formattedCode}
+                onChange={e => { setCode(e.target.value); setSelIdx(null); }}
+                style={{
+                  flex: 1, padding: 16, background: t.pv,
+                  border: "none", color: t.gn, fontFamily: "monospace",
+                  fontSize: 13, lineHeight: 1.7, resize: "none", outline: "none",
+                  boxSizing: "border-box"
+                }}
+                spellCheck={false}
+                placeholder="HTML 코드를 편집하세요..."
+              />
+              <div style={{ padding: "4px 12px", fontSize: 10, color: t.t3, borderTop: `1px solid ${t.cb}`, flexShrink: 0 }}>
+                코드 직접 편집 가능 · 미리보기 탭에서 결과 확인
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* Panel B: Properties / Interaction */}
-        <div style={{ width: 240, flexShrink: 0, display: "flex", flexDirection: "column", borderRight: `1px solid ${t.cb}`, background: t.card }}>
+        {/* Panel B: Properties / Interaction (only in preview + edit mode) */}
+        {viewMode === "preview" && !interactionMode && (
+        <div style={{ width: 240, flexShrink: 0, display: "flex", flexDirection: "column", background: t.card }}>
           {/* Tab switcher */}
           <div style={{ display: "flex", borderBottom: `1px solid ${t.cb}`, flexShrink: 0 }}>
             {[["style", "속성 편집"], ["interaction", "인터랙션"]].map(([k, label]) => (
@@ -869,60 +999,7 @@ export default function Editor({ project, onBack, onSave, t }) {
             </div>
           )}
         </div>
-
-        {/* Panel C: Code View */}
-        <div style={{ width: 320, flexShrink: 0, display: "flex", flexDirection: "column", background: t.bg, minWidth: 0 }}>
-          <div style={{
-            display: "flex", alignItems: "center", padding: "6px 12px",
-            borderBottom: `1px solid ${t.cb}`, fontSize: 11, color: t.t3, flexShrink: 0
-          }}>
-            <span>C. 코드 뷰</span>
-            <div style={{ marginLeft: "auto", display: "flex", gap: 4 }}>
-              <button onClick={() => setCodeEditing(!codeEditing)}
-                style={{
-                  padding: "3px 8px", fontSize: 10, border: `1px solid ${t.cb}`,
-                  background: codeEditing ? t.abg : "transparent",
-                  color: codeEditing ? t.ac : t.t3, cursor: "pointer", borderRadius: 3
-                }}>
-                {codeEditing ? "미리보기" : "편집"}
-              </button>
-              <button onClick={handleCopy}
-                style={{
-                  padding: "3px 8px", fontSize: 10, border: `1px solid ${t.ac}`,
-                  background: t.abg, color: copied ? t.gn : t.ac,
-                  cursor: "pointer", borderRadius: 3
-                }}>
-                {copied ? "복사됨 ✓" : "코드 복사"}
-              </button>
-            </div>
-          </div>
-          <div style={{ flex: 1, overflow: "auto", position: "relative" }}>
-            {codeEditing ? (
-              <textarea value={formattedCode}
-                onChange={e => { setCode(e.target.value); setSelIdx(null); }}
-                style={{
-                  width: "100%", height: "100%", padding: 12, background: t.pv,
-                  border: "none", color: t.gn, fontFamily: "monospace",
-                  fontSize: 12, lineHeight: 1.7, resize: "none", outline: "none",
-                  boxSizing: "border-box"
-                }}
-                spellCheck={false}
-              />
-            ) : (
-              <pre
-                style={{
-                  margin: 0, padding: 12, fontFamily: "monospace", fontSize: 12,
-                  lineHeight: 1.7, color: t.t2, whiteSpace: "pre-wrap", wordBreak: "break-all",
-                  background: t.pv, minHeight: "100%", boxSizing: "border-box"
-                }}
-                dangerouslySetInnerHTML={{ __html: highlightedCode }}
-              />
-            )}
-          </div>
-          <div style={{ padding: "4px 12px", fontSize: 10, color: t.t3, borderTop: `1px solid ${t.cb}`, flexShrink: 0 }}>
-            속성 변경 시 코드 실시간 업데이트
-          </div>
-        </div>
+        )}
       </div>
     </div>
   );
