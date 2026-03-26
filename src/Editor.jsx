@@ -68,10 +68,13 @@ export default function Editor({ project, onBack, onSave, t }) {
   const [bottomSheet, setBottomSheet] = useState(null);
   const [modal, setModal] = useState(null);
   const [eyedropper, setEyedropper] = useState(null); // null | "color" | "background"
+  const [eyedropperColor, setEyedropperColor] = useState(null); // current hovered color hex
+  const [eyedropperPos, setEyedropperPos] = useState(null); // { x, y } mouse position
   const [viewMode, setViewMode] = useState("preview"); // "preview" | "code"
   const [interactionMode, setInteractionMode] = useState(false); // true = 실행 모드
   const [editingText, setEditingText] = useState(null); // { idx, text }
   const previewRef = useRef(null);
+  const eyedropperCanvasRef = useRef(null);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -100,6 +103,79 @@ export default function Editor({ project, onBack, onSave, t }) {
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [eyedropper, selIdx]);
+
+  // Eyedropper: capture preview to canvas when entering eyedropper mode
+  useEffect(() => {
+    if (!eyedropper || !previewRef.current) return;
+    // Use a hidden canvas to render preview for pixel-level color picking
+    const previewEl = previewRef.current;
+    const rect = previewEl.getBoundingClientRect();
+    const canvas = document.createElement("canvas");
+    canvas.width = rect.width * 2; // 2x for retina
+    canvas.height = rect.height * 2;
+    const ctx = canvas.getContext("2d");
+    ctx.scale(2, 2);
+
+    // Draw preview background
+    ctx.fillStyle = t.pv;
+    ctx.fillRect(0, 0, rect.width, rect.height);
+
+    // Use foreignObject SVG trick to render HTML to canvas
+    const svgData = `<svg xmlns="http://www.w3.org/2000/svg" width="${rect.width}" height="${rect.height}">
+      <foreignObject width="100%" height="100%">
+        <div xmlns="http://www.w3.org/1999/xhtml" style="font-family:system-ui,sans-serif">${previewEl.innerHTML}</div>
+      </foreignObject>
+    </svg>`;
+    const img = new Image();
+    img.onload = () => {
+      ctx.drawImage(img, 0, 0, rect.width, rect.height);
+      eyedropperCanvasRef.current = { canvas, rect };
+    };
+    img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svgData);
+
+    return () => { eyedropperCanvasRef.current = null; };
+  }, [eyedropper, code]);
+
+  // Eyedropper: get pixel color at mouse position
+  const getPixelColor = useCallback((clientX, clientY) => {
+    const data = eyedropperCanvasRef.current;
+    if (!data) {
+      // Fallback: use computed style of element under cursor
+      const el = document.elementFromPoint(clientX, clientY);
+      if (!el) return null;
+      const style = window.getComputedStyle(el);
+      const rgb = eyedropper === "background" ? style.backgroundColor : style.color;
+      const m = rgb.match(/\d+/g);
+      if (!m || m.length < 3) return rgb;
+      return "#" + m.slice(0, 3).map(x => parseInt(x).toString(16).padStart(2, "0")).join("");
+    }
+    const { canvas, rect } = data;
+    const x = Math.round((clientX - rect.left) * 2);
+    const y = Math.round((clientY - rect.top) * 2);
+    const ctx = canvas.getContext("2d");
+    const pixel = ctx.getImageData(x, y, 1, 1).data;
+    return "#" + [pixel[0], pixel[1], pixel[2]].map(v => v.toString(16).padStart(2, "0")).join("");
+  }, [eyedropper]);
+
+  // Eyedropper mouse handlers on preview
+  const handleEyedropperMove = useCallback((e) => {
+    if (!eyedropper) return;
+    const color = getPixelColor(e.clientX, e.clientY);
+    setEyedropperColor(color);
+    setEyedropperPos({ x: e.clientX, y: e.clientY });
+  }, [eyedropper, getPixelColor]);
+
+  const handleEyedropperClick = useCallback((e) => {
+    if (!eyedropper || selIdx === null) return;
+    e.stopPropagation();
+    const color = getPixelColor(e.clientX, e.clientY);
+    if (color) {
+      updateStyle(eyedropper, color);
+    }
+    setEyedropper(null);
+    setEyedropperColor(null);
+    setEyedropperPos(null);
+  }, [eyedropper, selIdx, getPixelColor]);
 
   // Syntax highlight colors
   const hlColors = {
@@ -449,11 +525,50 @@ export default function Editor({ project, onBack, onSave, t }) {
                 display: "flex", alignItems: "center", justifyContent: "center",
                 position: "relative", overflow: "auto"
               }}>
-                <div ref={previewRef} onClick={handlePreviewClick}
+                <div ref={previewRef}
+                  onClick={eyedropper ? handleEyedropperClick : handlePreviewClick}
                   onDoubleClick={handlePreviewDblClick}
                   onMouseDown={handlePreviewMouseDown} onMouseUp={handlePreviewMouseUp}
+                  onMouseMove={eyedropper ? handleEyedropperMove : undefined}
+                  onMouseLeave={eyedropper ? () => { setEyedropperPos(null); setEyedropperColor(null); } : undefined}
                   dangerouslySetInnerHTML={{ __html: code }}
-                  style={{ maxWidth: "100%", cursor: interactionMode ? "pointer" : (eyedropper ? "cell" : "crosshair") }} />
+                  style={{ maxWidth: "100%", cursor: interactionMode ? "pointer" : (eyedropper ? "none" : "crosshair") }} />
+
+                {/* Eyedropper magnifier */}
+                {eyedropper && eyedropperPos && eyedropperColor && (
+                  <div style={{
+                    position: "fixed",
+                    left: eyedropperPos.x + 20,
+                    top: eyedropperPos.y - 80,
+                    pointerEvents: "none",
+                    zIndex: 100,
+                    display: "flex", flexDirection: "column", alignItems: "center"
+                  }}>
+                    {/* Magnifier circle */}
+                    <div style={{
+                      width: 80, height: 80, borderRadius: "50%",
+                      border: `3px solid ${eyedropperColor}`,
+                      background: eyedropperColor,
+                      boxShadow: "0 4px 16px rgba(0,0,0,0.4), inset 0 0 20px rgba(255,255,255,0.1)",
+                      display: "flex", alignItems: "center", justifyContent: "center"
+                    }}>
+                      <div style={{
+                        width: 16, height: 16, borderRadius: "50%",
+                        border: "2px solid rgba(255,255,255,0.8)",
+                        background: "transparent"
+                      }} />
+                    </div>
+                    {/* Color label */}
+                    <div style={{
+                      marginTop: 4, padding: "2px 8px",
+                      background: "#000", color: "#fff",
+                      borderRadius: 4, fontSize: 11, fontFamily: "monospace",
+                      whiteSpace: "nowrap"
+                    }}>
+                      {eyedropperColor}
+                    </div>
+                  </div>
+                )}
 
                 {/* Text editing overlay */}
                 {editingText && (
