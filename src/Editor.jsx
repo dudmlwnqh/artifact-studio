@@ -610,6 +610,8 @@ export default function Editor({ project, onBack, onSave, t }) {
                 display: "flex", alignItems: "center", justifyContent: "center",
                 position: "relative", overflow: "auto"
               }}>
+                {/* 미리보기 내부 모든 요소 선택/커서 방지 */}
+                <style>{`[data-preview-area] * { user-select: none !important; -webkit-user-select: none !important; cursor: inherit !important; }`}</style>
                 <div ref={previewRef}
                   onClick={eyedropper ? handleEyedropperClick : handlePreviewClick}
                   onDoubleClick={handlePreviewDblClick}
