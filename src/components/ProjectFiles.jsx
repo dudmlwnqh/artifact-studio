@@ -63,12 +63,20 @@ const FILE_TEMPLATES = [
 const inputBg = "rgba(255,255,255,0.05)";
 const inputBorder = "1px solid rgba(255,255,255,0.08)";
 
-export default function ProjectFiles({ files, onChange, t }) {
-  // files: { "theme.js": { code, type, label }, ... }
+export default function ProjectFiles({ files: filesProp, onChange, t }) {
+  // 로컬 state로 관리하여 즉시 반영
+  const [localFiles, setLocalFiles] = useState(filesProp || {});
+  const files = localFiles;
   const [showAdd, setShowAdd] = useState(false);
-  const [editingFile, setEditingFile] = useState(null); // filename
+  const [editingFile, setEditingFile] = useState(null);
   const [selectedTemplate, setSelectedTemplate] = useState(null);
   const [customName, setCustomName] = useState("");
+
+  // 변경 시 부모에게도 전달
+  const updateFiles = (newFiles) => {
+    setLocalFiles(newFiles);
+    onChange(newFiles);
+  };
 
   const fileList = Object.entries(files || {});
 
@@ -91,7 +99,7 @@ export default function ProjectFiles({ files, onChange, t }) {
         icon: template.icon,
       }
     };
-    onChange(updated);
+    updateFiles(updated);
     setShowAdd(false);
     setSelectedTemplate(null);
     setCustomName("");
@@ -105,7 +113,7 @@ export default function ProjectFiles({ files, onChange, t }) {
   const deleteFile = (name) => {
     const updated = { ...files };
     delete updated[name];
-    onChange(updated);
+    updateFiles(updated);
     if (editingFile === name) setEditingFile(null);
   };
 
@@ -115,7 +123,7 @@ export default function ProjectFiles({ files, onChange, t }) {
     Object.entries(files).forEach(([k, v]) => {
       updated[k === oldName ? newName : k] = v;
     });
-    onChange(updated);
+    updateFiles(updated);
     if (editingFile === oldName) setEditingFile(newName);
   };
 

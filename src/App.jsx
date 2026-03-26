@@ -71,7 +71,11 @@ export default function App() {
   }, [projects, sources, loaded]);
 
   const addProject = (p) => setProjects(prev => [...prev, p]);
-  const saveProject = (p) => setProjects(prev => prev.map(x => x.id === p.id ? p : x));
+  const saveProject = (p) => {
+    setProjects(prev => prev.map(x => x.id === p.id ? p : x));
+    // editProject도 같이 갱신해야 Editor 안에서 변경사항이 반영됨
+    if (editProject && editProject.id === p.id) setEditProject(p);
+  };
   const deleteProject = (id) => {
     if (confirm("이 프로젝트를 삭제하시겠습니까?")) {
       setProjects(prev => prev.filter(x => x.id !== id));
