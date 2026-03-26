@@ -106,9 +106,13 @@ export default function ComponentTab({ components: compsProp, setComponents: set
               <div style={{ position: "absolute", top: 6, left: 8, padding: "1px 8px", borderRadius: 4, fontSize: 9, background: "rgba(0,0,0,0.4)", color: t.ac }}>{c.cat}</div>
               {/* 프리뷰 */}
               <div style={{
-                padding: 16, background: "#fafafa", borderBottom: `1px solid ${t.cb}`,
-                minHeight: 80, display: "flex", alignItems: "center", justifyContent: "center"
-              }} dangerouslySetInnerHTML={{ __html: c.code }} />
+                padding: 12, background: "#fafafa", borderBottom: `1px solid ${t.cb}`,
+                height: 100, overflow: "hidden",
+                display: "flex", alignItems: "center", justifyContent: "center"
+              }}>
+                <div style={{ transform: "scale(0.75)", transformOrigin: "center", maxWidth: "133%" }}
+                  dangerouslySetInnerHTML={{ __html: c.code }} />
+              </div>
               {/* 이름 + 태그 */}
               <div style={{ padding: "10px 12px" }}>
                 <div style={{ fontSize: 13, fontWeight: 600, color: t.tx, marginBottom: 2 }}>{c.name}</div>
