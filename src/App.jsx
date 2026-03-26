@@ -21,6 +21,15 @@ export default function App() {
   const [showAdd, setShowAdd] = useState(false);
   const [projects, setProjects] = useState(INIT_PROJECTS);
   const [loaded, setLoaded] = useState(false);
+  const [sources, setSources] = useState([
+    { id: "s1", name: "Primary Button", cat: "버튼", color: "#7C6AFF" },
+    { id: "s2", name: "메인 컬러", cat: "팔레트", color: "#534AB7" },
+    { id: "s3", name: "다크 배경", cat: "배경", color: null },
+    { id: "s4", name: "카드 스택", cat: "레이아웃", color: "#22222e" },
+  ]);
+  const [showAddSource, setShowAddSource] = useState(false);
+  const [newSourceName, setNewSourceName] = useState("");
+  const [newSourceCat, setNewSourceCat] = useState("버튼");
 
   const t = isDark ? dark : light;
   const z = ZOOM[zoom];
@@ -36,6 +45,11 @@ export default function App() {
             setProjects(parsed);
           }
         }
+        const srcResult = await storage.get("sources");
+        if (srcResult && srcResult.value) {
+          const parsed = JSON.parse(srcResult.value);
+          if (Array.isArray(parsed)) setSources(parsed);
+        }
       } catch (e) {
         console.log("Storage load failed, using defaults");
       }
@@ -49,11 +63,12 @@ export default function App() {
     (async () => {
       try {
         await storage.set("projects", JSON.stringify(projects));
+        await storage.set("sources", JSON.stringify(sources));
       } catch (e) {
         console.log("Storage save failed");
       }
     })();
-  }, [projects, loaded]);
+  }, [projects, sources, loaded]);
 
   const addProject = (p) => setProjects(prev => [...prev, p]);
   const saveProject = (p) => setProjects(prev => prev.map(x => x.id === p.id ? p : x));
@@ -61,6 +76,15 @@ export default function App() {
     if (confirm("이 프로젝트를 삭제하시겠습니까?")) {
       setProjects(prev => prev.filter(x => x.id !== id));
     }
+  };
+  const addSource = () => {
+    if (!newSourceName.trim()) return;
+    setSources(prev => [...prev, { id: "s" + Date.now(), name: newSourceName.trim(), cat: newSourceCat, color: null }]);
+    setNewSourceName("");
+    setShowAddSource(false);
+  };
+  const deleteSource = (id) => {
+    setSources(prev => prev.filter(x => x.id !== id));
   };
 
   // Filter projects by search
@@ -265,37 +289,78 @@ export default function App() {
       {/* Source Tab */}
       {tab === "source" && (
         <div style={{ padding: 16 }}>
+          {/* Add source form */}
+          {showAddSource && (
+            <div style={{
+              marginBottom: 12, padding: 14, background: t.card,
+              border: `1px solid ${t.cb}`, borderRadius: 8
+            }}>
+              <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>자료 추가</div>
+              <input value={newSourceName} onChange={e => setNewSourceName(e.target.value)}
+                placeholder="자료 이름"
+                style={{
+                  width: "100%", padding: "8px 10px", marginBottom: 8, background: t.ib,
+                  border: `1px solid ${t.ibr}`, borderRadius: 6, fontSize: 13, color: t.tx,
+                  outline: "none", boxSizing: "border-box"
+                }} />
+              <select value={newSourceCat} onChange={e => setNewSourceCat(e.target.value)}
+                style={{
+                  width: "100%", padding: "8px 10px", marginBottom: 10, background: t.ib,
+                  border: `1px solid ${t.ibr}`, borderRadius: 6, fontSize: 13, color: t.tx, outline: "none"
+                }}>
+                {["버튼", "팔레트", "배경", "레이아웃", "아이콘", "텍스트", "기타"].map(c => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+              <div style={{ display: "flex", gap: 6 }}>
+                <button onClick={() => setShowAddSource(false)}
+                  style={{ flex: 1, padding: "8px", border: `1px solid ${t.cb}`, background: "transparent", color: t.t3, borderRadius: 6, fontSize: 12, cursor: "pointer" }}>
+                  취소
+                </button>
+                <button onClick={addSource}
+                  style={{ flex: 1, padding: "8px", border: "none", background: t.ac, color: "#fff", borderRadius: 6, fontSize: 12, cursor: "pointer", fontWeight: 600 }}>
+                  추가
+                </button>
+              </div>
+            </div>
+          )}
+
           <div style={{
             display: "grid",
             gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))",
             gap: 8
           }}>
-            {[
-              { n: "Primary Button", cat: "버튼", pv: <div style={{ padding: "4px 12px", background: "#7C6AFF", color: "#fff", fontSize: 9, borderRadius: 4 }}>Primary</div> },
-              { n: "메인 컬러", cat: "팔레트", pv: <div style={{ display: "flex", gap: 2 }}>{["#534AB7", "#7C6AFF", "#1D9E75", "#EF9F27"].map(c => <div key={c} style={{ width: 14, height: 14, background: c, borderRadius: 2 }} />)}</div> },
-              { n: "다크 배경", cat: "배경", pv: null },
-              { n: "카드 스택", cat: "레이아웃", pv: <div style={{ display: "flex", flexDirection: "column", gap: 2 }}><div style={{ height: 6, background: "#2a2a36", borderRadius: 2, width: "60%" }} /><div style={{ height: 14, background: "#22222e", borderRadius: 2 }} /></div> },
-            ].map((d, i) => (
-              <div key={i} style={{ border: `1px solid ${t.cb}`, borderRadius: 8, overflow: "hidden", background: t.card }}>
+            {sources.map(d => (
+              <div key={d.id} style={{ border: `1px solid ${t.cb}`, borderRadius: 8, overflow: "hidden", background: t.card, position: "relative" }}>
                 <div style={{
                   height: 70, display: "flex", alignItems: "center", justifyContent: "center",
-                  background: "#12121e", borderBottom: `1px solid ${t.cb}`
+                  background: d.color || "#12121e", borderBottom: `1px solid ${t.cb}`
                 }}>
-                  {d.pv || <div style={{ width: "100%", height: "100%", background: "linear-gradient(135deg,#0f2027,#2c5364)" }} />}
+                  {d.cat === "버튼" && <div style={{ padding: "4px 12px", background: d.color || "#7C6AFF", color: "#fff", fontSize: 9, borderRadius: 4 }}>{d.name}</div>}
+                  {d.cat === "팔레트" && <div style={{ display: "flex", gap: 2 }}>{["#534AB7", "#7C6AFF", "#1D9E75", "#EF9F27"].map(c => <div key={c} style={{ width: 14, height: 14, background: c, borderRadius: 2 }} />)}</div>}
+                  {d.cat !== "버튼" && d.cat !== "팔레트" && <div style={{ width: "100%", height: "100%", background: `linear-gradient(135deg, ${d.color || "#0f2027"}, #2c5364)` }} />}
                 </div>
                 <div style={{ padding: "8px 10px" }}>
-                  <div style={{ fontSize: 11, fontWeight: 500, color: t.tx }}>{d.n}</div>
+                  <div style={{ fontSize: 11, fontWeight: 500, color: t.tx }}>{d.name}</div>
                   <div style={{ fontSize: 9, color: t.t3, marginTop: 2 }}>{d.cat}</div>
                 </div>
+                <span onClick={() => deleteSource(d.id)}
+                  style={{
+                    position: "absolute", top: 4, right: 6, fontSize: 14,
+                    color: "rgba(255,255,255,0.5)", cursor: "pointer", lineHeight: 1
+                  }}>×</span>
               </div>
             ))}
-            <div style={{
+            <div onClick={() => setShowAddSource(true)} style={{
               border: `1px dashed ${t.cb}`, borderRadius: 8,
               display: "flex", alignItems: "center", justifyContent: "center",
               minHeight: 100, color: t.t3, fontSize: 11, cursor: "pointer"
             }}>
               + 자료 추가
             </div>
+          </div>
+          <div style={{ padding: "10px 0", fontSize: 11, color: t.t3 }}>
+            {sources.length}개 자료 · × 클릭으로 삭제
           </div>
         </div>
       )}
