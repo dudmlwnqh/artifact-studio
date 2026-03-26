@@ -534,7 +534,7 @@ export default function Editor({ project, onBack, onSave, t }) {
                   onMouseMove={eyedropper ? handleEyedropperMove : undefined}
                   onMouseLeave={eyedropper ? () => { setEyedropperPos(null); setEyedropperColor(null); } : undefined}
                   dangerouslySetInnerHTML={{ __html: code }}
-                  style={{ maxWidth: "100%", cursor: interactionMode ? "pointer" : (eyedropper ? "none" : "crosshair") }} />
+                  style={{ maxWidth: "100%", cursor: interactionMode ? "pointer" : (eyedropper ? "none" : "crosshair"), userSelect: "none", WebkitUserSelect: "none" }} />
 
                 {/* Eyedropper magnifier */}
                 {eyedropper && eyedropperPos && eyedropperColor && (
