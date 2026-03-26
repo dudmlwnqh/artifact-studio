@@ -101,13 +101,11 @@ export default function PageViewer({ project, onUpdateProject, t, onEditPage }) 
                 alignItems: "center", justifyContent: "center",
                 padding: 0, cursor: "default", position: "relative"
               }}>
-                {/* Rendered page - mobile frame, full app screen */}
+                {/* Rendered page - full width, height fits content */}
                 <div style={{
-                  width: 375, minHeight: 667, maxHeight: "85vh",
-                  background: "#0c0c18", borderRadius: 16, overflow: "auto",
-                  boxShadow: "0 8px 40px rgba(0,0,0,0.5)",
-                  border: "1px solid rgba(255,255,255,0.06)",
-                  position: "relative", flexShrink: 0
+                  width: "100%", minHeight: 300,
+                  background: "#0c0c18", overflow: "auto",
+                  position: "relative"
                 }}>
                   <JsxRenderer code={current?.code || ""}
                     style={{ userSelect: "none", WebkitUserSelect: "none", minHeight: "100%" }}
