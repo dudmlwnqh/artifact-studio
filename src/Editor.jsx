@@ -833,9 +833,8 @@ export default function Editor({ project, onBack, onSave, t }) {
           )}
         </div>
 
-        {/* Right Panel: Storyboard + Properties */}
-        {viewMode === "preview" && (
-        <div style={{ width: 280, flexShrink: 0, display: "flex", flexDirection: "column", background: t.card, borderLeft: `1px solid ${t.cb}` }}>
+        {/* Right Panel: Storyboard + Properties - ALWAYS VISIBLE */}
+        <div style={{ width: 320, flexShrink: 0, display: "flex", flexDirection: "column", background: t.card, borderLeft: `1px solid ${t.cb}` }}>
           {/* Tab switcher */}
           <div style={{ display: "flex", borderBottom: `1px solid ${t.cb}`, flexShrink: 0 }}>
             {[["storyboard", "스토리보드"], ...(interactionMode ? [] : [["style", "속성 편집"], ["interaction", "인터랙션"]])].map(([k, label]) => (
@@ -1264,7 +1263,6 @@ export default function Editor({ project, onBack, onSave, t }) {
             </div>
           )}
         </div>
-        )}
       </div>
     </div>
   );
