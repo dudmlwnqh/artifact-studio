@@ -4,7 +4,7 @@ export default function PageViewer({ project, onUpdateProject, t, onEditPage }) 
   const [leftMode, setLeftMode] = useState("page");
   const [pageIdx, setPageIdx] = useState(0);
   const [selectedElementId, setSelectedElementId] = useState(null);
-  const [stripVisible, setStripVisible] = useState(false);
+  const [stripVisible, setStripVisible] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
   const [newCode, setNewCode] = useState("");
   const [newName, setNewName] = useState("");
@@ -97,13 +97,15 @@ export default function PageViewer({ project, onUpdateProject, t, onEditPage }) 
                 alignItems: "center", justifyContent: "center",
                 padding: 0, cursor: "default", position: "relative"
               }}>
-                {/* Rendered artifact - full width */}
+                {/* Rendered artifact - centered, natural size */}
                 <div
                   onDoubleClick={(e) => { e.stopPropagation(); if (onEditPage && current) onEditPage(current); }}
                   dangerouslySetInnerHTML={{ __html: current?.code || "" }}
                   style={{
-                    width: "100%", minHeight: 200,
-                    userSelect: "none", WebkitUserSelect: "none"
+                    maxWidth: "90%", minWidth: 280,
+                    userSelect: "none", WebkitUserSelect: "none",
+                    borderRadius: 8,
+                    boxShadow: "0 8px 32px rgba(0,0,0,0.3)"
                   }}
                 />
 
