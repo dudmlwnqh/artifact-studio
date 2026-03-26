@@ -8,8 +8,9 @@ export default function PageViewer({ project, onUpdateProject, t, onEditPage }) 
   const [showAddModal, setShowAddModal] = useState(false);
   const [newCode, setNewCode] = useState("");
   const [newName, setNewName] = useState("");
+  const [localPages, setLocalPages] = useState(project.pages || []);
 
-  const pages = project.pages || [];
+  const pages = localPages;
   const elements = project.elements || [];
   const current = pages[pageIdx] || null;
   const mockups = pages.filter(p => p.type === "시안");
@@ -24,11 +25,13 @@ export default function PageViewer({ project, onUpdateProject, t, onEditPage }) 
       code: newCode.trim() || '<div style="padding:20px;color:#fff;text-align:center">새 시안</div>',
     };
     const newPages = [...pages, pg];
+    setLocalPages(newPages);
     onUpdateProject({ ...project, pages: newPages, code: newPages[0]?.code || project.code });
     setShowAddModal(false);
     setNewCode("");
     setNewName("");
     setPageIdx(newPages.length - 1);
+    setStripVisible(true);
   };
 
   const go = (dir) => setPageIdx(i => Math.max(0, Math.min(pages.length - 1, i + dir)));
