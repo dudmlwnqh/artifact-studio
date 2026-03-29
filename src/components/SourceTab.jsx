@@ -1,4 +1,6 @@
 import { useState } from "react";
+import TokenSetManager from "./TokenSetManager.jsx";
+import DesignTokenEditor from "./DesignTokenEditor.jsx";
 
 const CATEGORIES = ["전체","버튼","팔레트","배경","캐릭터","레이아웃","레퍼런스"];
 const FILE_TYPES = { jsx: "#7C6AFF", json: "#EF9F27", zip: "#5DCAA5", png: "#aaa", md: "#888", xlsx: "#2E7D32", lottie: "#FF6B00" };
@@ -37,10 +39,12 @@ const INIT_CONTACTS = [
   { id:"c2", name:"박개발", role:"백엔드 개발", type:"기술 개발", contact:"dev@email.com", tasks:["API 연동","DB 설계"], status:"대기" },
 ];
 
-export default function SourceTab({ sources, setSources, search, t, defaultSubTab }) {
+export default function SourceTab({ sources, setSources, search, t, defaultSubTab, tokenSets, setTokenSets }) {
   const subTab = defaultSubTab || "design"; // 부모에서 직접 제어
   const [cat, setCat] = useState("전체");
   const [viewMode, setViewMode] = useState("card"); // card | list
+  const [designView, setDesignView] = useState("tokens"); // tokens | assets
+  const [editingTokenSet, setEditingTokenSet] = useState(null);
   const [recentIds] = useState(["a1","a8","a11","a14","a5"]);
   const [assets, setAssets] = useState(INIT_ASSETS);
   const [backends, setBackends] = useState(INIT_BACKEND);
@@ -76,6 +80,45 @@ export default function SourceTab({ sources, setSources, search, t, defaultSubTa
 
       {/* ===== 디자인 자료 ===== */}
       {subTab === "design" && (<>
+        {/* 토큰 세트 편집 오버레이 */}
+        {editingTokenSet && (
+          <div style={{ position: "fixed", inset: 0, background: t.bg, zIndex: 50, display: "flex", flexDirection: "column" }}>
+            <DesignTokenEditor
+              t={t}
+              tokenSet={editingTokenSet}
+              onSave={(updated) => {
+                setTokenSets(prev => prev.map(s => s.id === updated.id ? updated : s));
+                setEditingTokenSet(null);
+              }}
+              onClose={() => setEditingTokenSet(null)}
+            />
+          </div>
+        )}
+
+        {/* 세그먼트 컨트롤: 토큰 세트 / 디자인 에셋 */}
+        <div style={{ display: "flex", gap: 2, marginBottom: 14, border: `1px solid ${t.cb}`, borderRadius: 6, overflow: "hidden", width: "fit-content" }}>
+          {[["tokens", "토큰 세트"], ["assets", "디자인 에셋"]].map(([k, label]) => (
+            <button key={k} onClick={() => setDesignView(k)} style={{
+              padding: "6px 16px", fontSize: 12, border: "none", cursor: "pointer",
+              background: designView === k ? t.abg : "transparent",
+              color: designView === k ? t.ac : t.t3,
+              fontWeight: designView === k ? 600 : 400,
+            }}>{label}</button>
+          ))}
+        </div>
+
+        {/* 토큰 세트 관리 */}
+        {designView === "tokens" && tokenSets && (
+          <TokenSetManager
+            tokenSets={tokenSets}
+            setTokenSets={setTokenSets}
+            onEditSet={(ts) => setEditingTokenSet(ts)}
+            t={t}
+          />
+        )}
+
+        {/* 디자인 에셋 (기존) */}
+        {designView === "assets" && (<>
         {/* 최근 사용 */}
         <div style={{ marginBottom: 16 }}>
           <div style={{ fontSize: 12, color: t.t3, marginBottom: 8 }}>최근 사용</div>
@@ -178,6 +221,7 @@ export default function SourceTab({ sources, setSources, search, t, defaultSubTa
             ))}
           </div>
         )}
+      </>)}
       </>)}
 
       {/* ===== 백엔드 / DB ===== */}

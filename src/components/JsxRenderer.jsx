@@ -58,7 +58,7 @@ ReactDOM.createRoot(document.getElementById("root")).render(<${renderTarget}/>);
     const files = { "/App.jsx": code };
     Object.entries(projectFiles).forEach(([name, content]) => {
       const path = name.startsWith("/") ? name : `/${name}`;
-      files[path] = content;
+      files[path] = typeof content === "object" && content !== null ? content.code : content;
     });
 
     return (

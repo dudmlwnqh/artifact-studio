@@ -97,7 +97,7 @@ function formatHTML(code) {
   return lines.join("\n");
 }
 
-export default function Editor({ project, onBack, onSave, t }) {
+export default function Editor({ project, onBack, onSave, t, tokenSets }) {
   // Auto-start editing first page or project code
   const firstPage = (project.pages || [])[0] || null;
   const [editingPage, setEditingPage] = useState(firstPage);
@@ -913,7 +913,7 @@ export default function Editor({ project, onBack, onSave, t }) {
 
         {/* Right Panel: Storyboard only */}
         <div style={{ width: 320, flexShrink: 0, display: "flex", flexDirection: "column", background: t.card, borderLeft: `1px solid ${t.cb}` }}>
-          <StoryboardPanel project={project} onUpdateProject={onSave} t={t} />
+          <StoryboardPanel project={project} onUpdateProject={onSave} t={t} tokenSets={tokenSets} />
         </div>
       </div>
     </div>

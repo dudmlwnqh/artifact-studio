@@ -1,7 +1,7 @@
 import { useState } from "react";
 import ProjectFiles from "./ProjectFiles.jsx";
 
-export default function StoryboardPanel({ project, onUpdateProject, t }) {
+export default function StoryboardPanel({ project, onUpdateProject, t, tokenSets }) {
   const [tab, setTab] = useState("storyboard"); // "files" | "materials" | "storyboard"
   const [steps, setSteps] = useState(project.storyboard || [
     {
@@ -67,6 +67,9 @@ export default function StoryboardPanel({ project, onUpdateProject, t }) {
         <ProjectFiles
           files={project.projectFiles || {}}
           onChange={(newFiles) => onUpdateProject({ ...project, projectFiles: newFiles })}
+          onUpdateProject={onUpdateProject}
+          project={project}
+          tokenSets={tokenSets || []}
           t={t}
         />
       )}
